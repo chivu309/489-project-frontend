@@ -5,12 +5,8 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Scaffold: the basic page frame
-    return Scaffold(
-      backgroundColor: Colors.white,
 
-      // SafeArea = keeps content away from the phone's notch/status bar/home indicator
-      body: SafeArea(
+      return SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -101,8 +97,6 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
                         onPressed: () {
-                          // TODO: navigate to the Scan page when it's ready
-                          // Example later: Navigator.push(context, MaterialPageRoute(builder: (_) => const ScanPage()));
                         },
                         child: const Text('Analyses Skin with AI'),
                       ),
@@ -155,22 +149,8 @@ class HomePage extends StatelessWidget {
             ],
           ),
         ),
-      ),
+      );
 
-      // navigation button
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0, // 0 = Home tab is selected
-        type: BottomNavigationBarType.fixed, // keeps all labels visible (not just selected one)
-        selectedItemColor: const Color(0xFF4A5A3A),
-        unselectedItemColor: Colors.black45,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined), label: 'Routine'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
-        ],
-      ),
-    );
   }
 
   // helper method to create a row for each step

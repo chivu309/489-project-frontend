@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'screens/home_page.dart';
+import 'screens/main_navigation.dart';
 void main() {
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: HomePage(),
+    home: MainNavigation(),
   ));
 }
 
@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFBCC2B6)),
         useMaterial3: true,
       ),
-      home: const HomePage(),
+      home: const MainNavigation(),
     );
   }
 }

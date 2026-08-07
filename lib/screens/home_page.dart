@@ -22,7 +22,7 @@ class HomePage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Ki ora,',
+                        'Kia ora,',
                         style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
                       ),
                       Text(

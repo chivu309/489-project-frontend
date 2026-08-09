@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:skincare_ai_system/main.dart';
 import 'home_page.dart';
 import 'chatbot_page.dart';
 import 'routine_page.dart';
 import 'profile_page.dart';
+import 'scan_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -12,10 +15,8 @@ class MainNavigation extends StatefulWidget {
 }
 
 class MainNavigationState extends State<MainNavigation> {
-  // Tracks which tab is currently selected. 0 = Home.
   int _selectedIndex = 0;
 
-  // The list of pages, in the same order as the bottom nav items.
   final List<Widget> _pages = const [
     HomePage(),
     ChatbotPage(),
@@ -23,35 +24,87 @@ class MainNavigationState extends State<MainNavigation> {
     ProfilePage(),
   ];
 
-  // Called whenever the user taps a nav item.
   void _onTabTapped(int index) {
     setState(() {
-      // setState tells Flutter "something changed, please rebuild the UI"
       _selectedIndex = index;
     });
+  }
+
+  Future<void> _openCamera() async {
+    final imagePath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
+    );
+    if (imagePath != null) {
+      // TODO: send imagePath to your AI skin-analysis pipeline
+      debugPrint('Photo captured: $imagePath');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,
       ),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          height: 64,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFEAEAEA))),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _navItem(icon: Icons.home_outlined, label: 'Home', index: 0),
+              _navItem(icon: Icons.chat_bubble_outline, label: 'Chat', index: 1),
+              _cameraItem(), // the highlighted circular camera button
+              _navItem(icon: Icons.menu_book_outlined, label: 'Routine', index: 2),
+              _navItem(icon: Icons.person_outline, label: 'Profile', index: 3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onTabTapped, // runs every time a tab is tapped
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF4A5A3A),
-        unselectedItemColor: Colors.black45,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined), label: 'Routine'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+  Widget _navItem({required IconData icon, required String label, required int index}) {
+    final bool isSelected = _selectedIndex == index;
+    final Color color = isSelected ? const Color(0xFF4A5A3A) : Colors.black45;
+
+    return GestureDetector(
+      onTap: () => _onTabTapped(index),
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(color: color, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  Widget _cameraItem() {
+    return GestureDetector(
+      onTap: _openCamera,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: Color(0xFFD9E2CD), // light green circle
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.camera_alt_outlined, color: Color(0xFF4A5A3A), size: 20),
+          ),
         ],
       ),
     );

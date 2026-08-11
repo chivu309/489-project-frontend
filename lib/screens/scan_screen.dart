@@ -1,5 +1,12 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'photo_preview.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
+
+
 
 class SkinScanScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -19,7 +26,14 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
     _initCamera();
   }
 
-  void _initCamera() {
+  Future<void> _initCamera() async {
+    final status = await Permission.camera.request();
+
+    if (!status.isGranted) {
+      debugPrint('Camera permission denied');
+      return; // don't attempt to initialize without permission
+    }
+
     final frontCamera = widget.cameras.firstWhere(
           (cam) => cam.lensDirection == CameraLensDirection.front,
       orElse: () => widget.cameras.first,
@@ -31,16 +45,58 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
       enableAudio: false,
     );
 
-    _initializeControllerFuture = _controller!.initialize();
-    if (mounted) setState(() {});
+    try {
+      _initializeControllerFuture = _controller!.initialize();
+      await _initializeControllerFuture;
+    } catch (e) {
+      debugPrint('Camera init error: $e');
+      return;
+    }
+
+    if (!mounted) {
+      // widget was disposed while we were awaiting — clean up safely
+      await _controller?.dispose();
+      return;
+    }
+
+    setState(() {});
   }
 
   Future<void> _takePhoto() async {
     try {
       await _initializeControllerFuture;
-      final image = await _controller!.takePicture();
+      final XFile rawImage = await _controller!.takePicture();
+
+      // Read and flip the image horizontally (front camera mirror fix)
+      final bytes = await File(rawImage.path).readAsBytes();
+      final decodedImage = img.decodeImage(bytes);
+
+      if (decodedImage == null) {
+        debugPrint('Failed to decode image');
+        return;
+      }
+
+      final flippedImage = img.flipHorizontal(decodedImage);
+      final flippedBytes = img.encodeJpg(flippedImage);
+
+      final Directory tempDir = await getTemporaryDirectory();
+      final String fileName = 'skin_scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String savedPath = '${tempDir.path}/$fileName';
+
+      final File savedImage = await File(savedPath).writeAsBytes(flippedBytes);
+
       if (!mounted) return;
-      Navigator.pop(context, image.path);
+
+      final confirmed = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PhotoPreviewScreen(imagePath: savedImage.path),
+        ),
+      );
+
+      if (confirmed == true && mounted) {
+        Navigator.pop(context, savedImage.path);
+      }
     } catch (e) {
       debugPrint('Error taking photo: $e');
     }

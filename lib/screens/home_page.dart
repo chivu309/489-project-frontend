@@ -99,13 +99,13 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
                         onPressed: () async {
-                          final imagePath = await Navigator.push<String>(
+                          final imagePaths = await Navigator.push<List<String>>(
                             context,
                             MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
                           );
-                          if (imagePath != null) {
+                          if (imagePaths != null && imagePaths.length == 3) {
                             // TODO: send imagePath to your AI skin-analysis pipeline
-                            debugPrint('Photo captured: $imagePath');
+                            debugPrint('Photo captured: $imagePaths');
                           }
                         },
                         child: const Text('Analyses Skin with AI'),

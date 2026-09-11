@@ -1,20 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
-// A simple data model for one chat bubble
 class ChatMessage {
   final String text;
-  final bool isUser; // true = right-aligned user bubble, false = bot bubble
+  final bool isUser;
   ChatMessage({required this.text, required this.isUser});
-}
-
-// Tracks which question we're currently asking, in order
-enum ChatStep {
-  concern,
-  ageGroup,
-  pregnant,
-  healthConcern,
-  done,
 }
 
 class ChatConversationPage extends StatefulWidget {
@@ -27,21 +17,21 @@ class ChatConversationPage extends StatefulWidget {
 class _ChatConversationPageState extends State<ChatConversationPage> {
   final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _textController = TextEditingController();
 
-  ChatStep _currentStep = ChatStep.concern;
   bool _isLoading = false;
-
-  // Collected answers — filled in as the user taps quick-reply options
-  String? _mainConcern;
-  String? _ageGroup;
-  bool? _isPregnant;
-  bool? _hasHealthConcern;
 
   @override
   void initState() {
     super.initState();
-    // Bot's opening message, shown as soon as the screen loads
-    _addBotMessage("Ki ora, I'm Glow!\nTell me what's going on with your skin today?");
+    _addBotMessage("Ki ora, I'm Glow! Tell me what's going on with your skin today?");
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _addBotMessage(String text) {
@@ -54,7 +44,6 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     _scrollToBottom();
   }
 
-  // Scrolls the chat list down so the newest message is visible
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -67,56 +56,37 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     });
   }
 
-  // Called whenever the user taps a quick-reply option.
-  // Advances the conversation to the next step.
-  void _handleReply(String selectedLabel, {bool? boolValue}) {
-    _addUserMessage(selectedLabel);
-
-    switch (_currentStep) {
-      case ChatStep.concern:
-        _mainConcern = selectedLabel;
-        setState(() => _currentStep = ChatStep.ageGroup);
-        _addBotMessage("Thanks for sharing! What's your age group?");
-        break;
-
-      case ChatStep.ageGroup:
-        _ageGroup = selectedLabel;
-        setState(() => _currentStep = ChatStep.pregnant);
-        _addBotMessage("Got it. Are you currently pregnant?");
-        break;
-
-      case ChatStep.pregnant:
-        _isPregnant = boolValue;
-        setState(() => _currentStep = ChatStep.healthConcern);
-        _addBotMessage("Do you have any other health concerns?");
-        break;
-
-      case ChatStep.healthConcern:
-        _hasHealthConcern = boolValue;
-        setState(() => _currentStep = ChatStep.done);
-        _addBotMessage("Thanks! Let me work out a recommendation for you...");
-        _submitToBackend();
-        break;
-
-      case ChatStep.done:
-        break; // conversation already finished, ignore further taps
-    }
+  // Builds the conversation history in the shape the backend expects
+  List<Map<String, String>> _buildHistory() {
+    return _messages
+        .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'text': m.text})
+        .toList();
   }
 
-  Future<void> _submitToBackend() async {
+  Future<void> _sendMessage() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty || _isLoading) return;
+
+    _textController.clear();
+    final historyBeforeThisTurn = _buildHistory(); // snapshot BEFORE adding new message
+    _addUserMessage(text);
     setState(() => _isLoading = true);
 
     try {
-      final result = await ApiService.submitSkinCheck(
-        isPregnant: _isPregnant!,
-        hasHealthConcern: _hasHealthConcern!,
-        ageGroup: _ageGroup!,
-        mainConcern: _mainConcern!,
-      );
+      final result = await ApiService.sendChatMessage(
+        conversationHistory: historyBeforeThisTurn,
+        latestMessage: text,
+      ).timeout(const Duration(seconds: 20));
 
-      // For now, just show the raw placeholder recommendation as a bot message.
-      // Later this becomes the real formatted recommendation text.
-      _addBotMessage("Recommendation: ${result['recommendation']}");
+      debugPrint('RAW BACKEND RESPONSE: $result');
+
+      _addBotMessage(result['reply'] ?? "Let's continue...");
+
+      if (result['ready_to_assess'] == true && result['assessment'] != null) {
+        final assessment = result['assessment'] as Map<String, dynamic>;
+        _showAssessmentResult(assessment);
+        // Conversation intentionally stays open — user can keep chatting
+      }
     } catch (e) {
       _addBotMessage("Sorry, something went wrong: $e");
     } finally {
@@ -124,52 +94,30 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     }
   }
 
-  // Returns the quick-reply options relevant to the CURRENT step
-  List<Widget> _buildQuickReplies() {
-    switch (_currentStep) {
-      case ChatStep.concern:
-        return [
-          _replyButton('I have acne/breakout'),
-          _replyButton('My skin is very dry'),
-          _replyButton('I have redness/irritation'),
-          _replyButton('Something else'),
-        ];
+  void _showAssessmentResult(Map<String, dynamic> assessment) {
+    final status = assessment['status'];
 
-      case ChatStep.ageGroup:
-        return [
-          _replyButton('20-30'),
-          _replyButton('31-40'),
-          _replyButton('41-50'),
-          _replyButton('51-60'),
-        ];
+    if (status == 'escalated') {
+      _addBotMessage("⚠️ ${assessment['message']}\n\nPlease consult a professional for further guidance.");
+    } else if (status == 'follow_up_needed') {
+      _addBotMessage(assessment['message'] ?? 'Could you share a bit more detail?');
+    } else if (status == 'recommendation') {
+      final rec = assessment['recommendation'] as Map<String, dynamic>?;
+      if (rec == null) {
+        _addBotMessage("Sorry, no recommendation data was returned.");
+        return;
+      }
+      final morning = ((rec['morning_routine'] as List?) ?? []).join(', ');
+      final evening = ((rec['evening_routine'] as List?) ?? []).join(', ');
+      final confidenceValue = assessment['confidence'];
+      final confidencePercent = confidenceValue != null ? ((confidenceValue as num) * 100).round() : 0;
 
-      case ChatStep.pregnant:
-        return [
-          _replyButton('Yes', boolValue: true),
-          _replyButton('No', boolValue: false),
-        ];
-
-      case ChatStep.healthConcern:
-        return [
-          _replyButton('Yes', boolValue: true),
-          _replyButton('No', boolValue: false),
-        ];
-
-      case ChatStep.done:
-        return []; // no more questions once finished
+      _addBotMessage(
+          "🌞 Morning: ${morning.isEmpty ? 'N/A' : morning}\n\n"
+              "🌙 Evening: ${evening.isEmpty ? 'N/A' : evening}\n\n"
+              "Confidence: $confidencePercent%"
+      );
     }
-  }
-
-  Widget _replyButton(String label, {bool? boolValue}) {
-    return OutlinedButton(
-      onPressed: () => _handleReply(label, boolValue: boolValue),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.black87,
-        side: const BorderSide(color: Colors.black26),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      child: Text(label),
-    );
   }
 
   @override
@@ -183,15 +131,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         title: Column(
           children: const [
             Text('Glow', style: TextStyle(fontWeight: FontWeight.bold)),
-            Text('Skincare assistance',
-                style: TextStyle(fontSize: 12, color: Colors.black54)),
+            Text('Skincare assistance', style: TextStyle(fontSize: 12, color: Colors.black54)),
           ],
         ),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          // Chat history
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -200,19 +146,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
               itemBuilder: (context, index) {
                 final message = _messages[index];
                 return Align(
-                  alignment: message.isUser
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
+                  alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.7,
-                    ),
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
                     decoration: BoxDecoration(
-                      color: message.isUser
-                          ? const Color(0xFFBCC2B6)
-                          : const Color(0xFFF0F2ED),
+                      color: message.isUser ? const Color(0xFFBCC2B6) : const Color(0xFFF0F2ED),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(message.text),
@@ -222,25 +162,44 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
             ),
           ),
 
-          // Loading spinner while waiting for the backend
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.all(12),
               child: CircularProgressIndicator(),
             ),
 
-          // Quick-reply buttons for the current step
-          if (!_isLoading && _currentStep != ChatStep.done)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: _buildQuickReplies(),
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    enabled: !_isLoading,
+                    decoration: InputDecoration(
+                      hintText: 'Write a message...',
+                      filled: true,
+                      fillColor: const Color(0xFFF0F2ED),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _isLoading ? null : _sendMessage,
+                  icon: const Icon(Icons.send),
+                  color: const Color(0xFF4A5A3A),
+                ),
+              ],
             ),
+          ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
         ],
       ),
     );

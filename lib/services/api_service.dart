@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.68.59:8000';
+  static const String baseUrl = 'http://Quynhs-MacBook-Pro.local:8000';
 
   // Existing test function
   static Future<String> testConnection() async {
@@ -19,7 +19,7 @@ class ApiService {
     }
   }
 
-  // NEW: sends questionnaire answers to /assess and returns the response
+  // Sends questionnaire answers to /assess and returns the response
   static Future<Map<String, dynamic>> submitSkinCheck({
     required bool isPregnant,
     required bool hasHealthConcern,
@@ -31,10 +31,7 @@ class ApiService {
     try {
       final response = await http.post(
         url,
-        // Tells the server we're sending JSON
         headers: {'Content-Type': 'application/json'},
-        // Converts our Dart values into a JSON string matching
-        // the SkinCheckInput shape defined in main.py
         body: jsonEncode({
           'is_pregnant': isPregnant,
           'has_health_concern': hasHealthConcern,
@@ -44,15 +41,39 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        // Decode the JSON response into a Dart Map we can use
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        // Server responded, but with an error (e.g. bad data)
         throw Exception('Server error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      // Network failure, timeout, server not reachable, etc.
       throw Exception('Failed to submit skin check: $e');
+    }
+  }
+
+  // NEW: sends a free-form chat message + history to /chat and returns the response
+  static Future<Map<String, dynamic>> sendChatMessage({
+    required List<Map<String, String>> conversationHistory,
+    required String latestMessage,
+  }) async {
+    final url = Uri.parse('$baseUrl/chat');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'conversation_history': conversationHistory,
+          'latest_message': latestMessage,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Server error: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Failed to send chat message: $e');
     }
   }
 }

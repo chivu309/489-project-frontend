@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://Quynhs-MacBook-Pro.local:8000';
+  static const String baseUrl = 'https://skincarebackend-nkd8.onrender.com';
 
   // Existing test function
   static Future<String> testConnection() async {

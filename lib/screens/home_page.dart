@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:skincare_ai_system/main.dart';
+import 'scan_screen.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -96,7 +98,15 @@ class HomePage extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () {
+                        onPressed: () async {
+                          final imagePaths = await Navigator.push<List<String>>(
+                            context,
+                            MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
+                          );
+                          if (imagePaths != null && imagePaths.length == 3) {
+                            // TODO: send imagePath to your AI skin-analysis pipeline
+                            debugPrint('Photo captured: $imagePaths');
+                          }
                         },
                         child: const Text('Analyses Skin with AI'),
                       ),

@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'screens/main_navigation.dart';
-void main() {
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: MainNavigation(),
-  ));
+import 'package:camera/camera.dart';
+
+List<CameraDescription> cameras = [];
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  cameras = await availableCameras();
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of my application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -25,4 +27,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

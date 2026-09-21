@@ -25,14 +25,14 @@ class _RoutinePageState extends State<RoutinePage> {
 
   // Morning routine items — pre-checked to match your mockup ("completed")
   final List<RoutineItem> _morningItems = [
-    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined, isChecked: true),
-    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined, isChecked: true),
-    RoutineItem(name: 'Sunscreen', icon: Icons.wb_sunny_outlined, isChecked: true),
+    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined, isChecked: false),
+    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined, isChecked: false),
+    RoutineItem(name: 'Sunscreen', icon: Icons.wb_sunny_outlined, isChecked: false),
   ];
 
   // Evening routine items — 1 of 3 checked, matching your mockup
   final List<RoutineItem> _eveningItems = [
-    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined, isChecked: true),
+    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined, isChecked: false),
     RoutineItem(name: 'Serum', icon: Icons.opacity_outlined, isChecked: false),
     RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined, isChecked: false),
   ];

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'login_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -9,8 +10,42 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // Grabs the currently logged-in user from Supabase's auth session
   User? get _currentUser => Supabase.instance.client.auth.currentUser;
+
+  Future<void> _signOut() async {
+    // Show a confirmation dialog before actually signing out
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await Supabase.instance.client.auth.signOut();
+
+    if (mounted) {
+      // Clear the entire navigation stack and go back to LoginPage,
+      // so the user can't press "back" and return to the app while logged out
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+            (route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,15 +60,15 @@ class _ProfilePageState extends State<ProfilePage> {
             _buildSkinProfileCard(),
             const SizedBox(height: 20),
             _buildMenuList(),
+            const SizedBox(height: 20),
+            _buildSignOutButton(),
           ],
         ),
       ),
     );
   }
 
-  // ---------- Avatar + name + edit icon ----------
   Widget _buildAvatarSection() {
-    // Fall back to "Guest" if somehow no user is logged in
     final displayName = _currentUser?.email ?? 'Guest';
 
     return Column(
@@ -78,7 +113,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ---------- Skin profile info card (still placeholder data for now) ----------
   Widget _buildSkinProfileCard() {
     return Container(
       width: double.infinity,
@@ -134,7 +168,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ---------- Menu list ----------
   Widget _buildMenuList() {
     final items = [
       'My Routine',
@@ -175,6 +208,23 @@ class _ProfilePageState extends State<ProfilePage> {
             const Icon(Icons.chevron_right, size: 20, color: Colors.black45),
           ],
         ),
+      ),
+    );
+  }
+
+  // ---------- Sign out button ----------
+  Widget _buildSignOutButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF4A5A3A),
+          side: const BorderSide(color: Color(0xFF4A5A3A)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: _signOut,
+        child: const Text('Log out'),
       ),
     );
   }

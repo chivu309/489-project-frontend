@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  // Grabs the currently logged-in user from Supabase's auth session
+  User? get _currentUser => Supabase.instance.client.auth.currentUser;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +33,9 @@ class ProfilePage extends StatelessWidget {
 
   // ---------- Avatar + name + edit icon ----------
   Widget _buildAvatarSection() {
+    // Fall back to "Guest" if somehow no user is logged in
+    final displayName = _currentUser?.email ?? 'Guest';
+
     return Column(
       children: [
         Align(
@@ -57,15 +69,16 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        const Text(
-          'Sara', // placeholder for now — replaced with real data in Part 3
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
+        Text(
+          displayName,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+          textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
-  // ---------- Skin profile info card ----------
+  // ---------- Skin profile info card (still placeholder data for now) ----------
   Widget _buildSkinProfileCard() {
     return Container(
       width: double.infinity,

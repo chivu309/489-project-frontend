@@ -79,7 +79,7 @@ class _EditSkinProfilePageState extends State<EditSkinProfilePage> {
         title: const Text('Edit Skin Profile', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,7 +131,7 @@ class _EditSkinProfilePageState extends State<EditSkinProfilePage> {
                 ),
               ),
 
-              const Spacer(),
+              const SizedBox(height: 32),
 
               SizedBox(
                 width: double.infinity,

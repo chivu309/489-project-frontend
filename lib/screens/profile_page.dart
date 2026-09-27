@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'login_page.dart';
 import 'routine_progress_page.dart';
+import 'edit_skin_profile_page.dart';
+import 'privacy_policy_page.dart';
+import 'terms_conditions_page.dart';
+import 'reminder_page.dart';
+import '../services/skin_profile_storage.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final VoidCallback? onGoToRoutine;
+  const ProfilePage({super.key, this.onGoToRoutine});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -13,8 +20,108 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   User? get _currentUser => Supabase.instance.client.auth.currentUser;
 
+  String? _avatarUrl;
+  bool _isUploadingAvatar = false;
+
+  // ---------- Skin profile state ----------
+  String _skinType = 'Not set';
+  String _skinConcern = 'Not set';
+  String _allergies = 'None';
+  String _lastAnalysisDate = '-';
+  bool _isLoadingSkinProfile = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _avatarUrl = _currentUser?.userMetadata?['avatar_url'] as String?;
+    _loadSkinProfile();
+  }
+
+  Future<void> _loadSkinProfile() async {
+    try {
+      final profile = await SkinProfileStorage.loadProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          _skinType = profile['skin_type'] ?? 'Not set';
+          _skinConcern = profile['skin_concern'] ?? 'Not set';
+          _allergies = profile['allergies'] ?? 'None';
+          _lastAnalysisDate = profile['last_analysis_date'] ?? '-';
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load skin profile: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingSkinProfile = false);
+    }
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: source,
+      maxWidth: 512,
+      imageQuality: 80,
+    );
+    if (pickedFile == null) return;
+
+    setState(() => _isUploadingAvatar = true);
+
+    try {
+      final userId = _currentUser!.id;
+      final fileBytes = await pickedFile.readAsBytes();
+      final filePath = '$userId/avatar.jpg';
+
+      await Supabase.instance.client.storage.from('avatars').uploadBinary(
+        filePath,
+        fileBytes,
+        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+      );
+
+      final publicUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(filePath);
+      final freshUrl = '$publicUrl?t=${DateTime.now().millisecondsSinceEpoch}';
+
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(data: {'avatar_url': freshUrl}),
+      );
+
+      if (mounted) {
+        setState(() => _avatarUrl = freshUrl);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload photo: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingAvatar = false);
+    }
+  }
+
   Future<void> _signOut() async {
-    // Show a confirmation dialog before actually signing out
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -38,8 +145,6 @@ class _ProfilePageState extends State<ProfilePage> {
     await Supabase.instance.client.auth.signOut();
 
     if (mounted) {
-      // Clear the entire navigation stack and go back to LoginPage,
-      // so the user can't press "back" and return to the app while logged out
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -56,8 +161,27 @@ class _ProfilePageState extends State<ProfilePage> {
           MaterialPageRoute(builder: (_) => const RoutineProgressPage()),
         );
         break;
-    // Other items (Log My Routine, Privacy Policy, Reminder,
-    // Terms and Conditions) not wired up yet — add cases here later
+      case 'Log My Routine':
+        widget.onGoToRoutine?.call();
+        break;
+      case 'Privacy Policy':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
+        );
+        break;
+      case 'Reminder':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ReminderPage()),
+        );
+        break;
+      case 'Terms and Conditions':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const TermsConditionsPage()),
+        );
+        break;
       default:
         break;
     }
@@ -100,21 +224,43 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         Stack(
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 50,
-              backgroundColor: Color(0xFFDCE3D5),
-              child: Icon(Icons.person, size: 50, color: Colors.black54),
+              backgroundColor: const Color(0xFFDCE3D5),
+              backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
+              child: _avatarUrl == null
+                  ? const Icon(Icons.person, size: 50, color: Colors.black54)
+                  : null,
             ),
+            if (_isUploadingAvatar)
+              Positioned.fill(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black38,
+                  ),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               bottom: 0,
               right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFDCE3D5),
-                  shape: BoxShape.circle,
+              child: GestureDetector(
+                onTap: _isUploadingAvatar ? null : _pickAndUploadAvatar,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFDCE3D5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.camera_alt_outlined, size: 16),
                 ),
-                child: const Icon(Icons.camera_alt_outlined, size: 16),
               ),
             ),
           ],
@@ -146,21 +292,43 @@ class _ProfilePageState extends State<ProfilePage> {
               const Text('Skin Profile',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               TextButton(
-                onPressed: () {
-                  // TODO: navigate to edit skin profile screen
+                onPressed: () async {
+                  final saved = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditSkinProfilePage(
+                        initialSkinType: _skinType == 'Not set' ? 'Sensitive' : _skinType,
+                        initialSkinConcern: _skinConcern == 'Not set' ? 'Acne' : _skinConcern,
+                        initialAllergies: _allergies,
+                      ),
+                    ),
+                  );
+                  if (saved == true) {
+                    _loadSkinProfile();
+                  }
                 },
                 child: const Text('Edit'),
               ),
             ],
           ),
           const Divider(height: 20),
-          _buildInfoRow('Skin Type', 'Sensitive'),
-          const Divider(height: 20),
-          _buildInfoRow('Skin concern', 'Acne'),
-          const Divider(height: 20),
-          _buildInfoRow('Allergies', 'None'),
-          const Divider(height: 20),
-          _buildInfoRow('Last skin analyses', '12/05/2026', icon: Icons.calendar_today_outlined),
+          _isLoadingSkinProfile
+              ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator()),
+          )
+              : Column(
+            children: [
+              _buildInfoRow('Skin Type', _skinType),
+              const Divider(height: 20),
+              _buildInfoRow('Skin concern', _skinConcern),
+              const Divider(height: 20),
+              _buildInfoRow('Allergies', _allergies),
+              const Divider(height: 20),
+              _buildInfoRow('Last skin analyses', _lastAnalysisDate,
+                  icon: Icons.calendar_today_outlined),
+            ],
+          ),
         ],
       ),
     );
@@ -226,7 +394,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ---------- Sign out button ----------
   Widget _buildSignOutButton() {
     return SizedBox(
       width: double.infinity,

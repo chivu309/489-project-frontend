@@ -17,16 +17,28 @@ class MainNavigation extends StatefulWidget {
 class MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    ChatbotPage(),
-    RoutinePage(),
-    ProfilePage(),
-  ];
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      const HomePage(),
+      const ChatbotPage(),
+      const RoutinePage(),
+      ProfilePage(onGoToRoutine: _goToRoutineTab),
+    ];
+  }
 
   void _onTabTapped(int index) {
     setState(() {
       _selectedIndex = index;
+    });
+  }
+
+  void _goToRoutineTab() {
+    setState(() {
+      _selectedIndex = 2; // Routine tab's index
     });
   }
 
@@ -36,7 +48,6 @@ class MainNavigationState extends State<MainNavigation> {
       MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
     );
     if (imagePath != null) {
-      // TODO: send imagePath to your AI skin-analysis pipeline
       debugPrint('Photo captured: $imagePath');
     }
   }
@@ -61,7 +72,7 @@ class MainNavigationState extends State<MainNavigation> {
             children: [
               _navItem(icon: Icons.home_outlined, label: 'Home', index: 0),
               _navItem(icon: Icons.chat_bubble_outline, label: 'Chat', index: 1),
-              _cameraItem(), // the highlighted circular camera button
+              _cameraItem(),
               _navItem(icon: Icons.menu_book_outlined, label: 'Routine', index: 2),
               _navItem(icon: Icons.person_outline, label: 'Profile', index: 3),
             ],
@@ -100,7 +111,7 @@ class MainNavigationState extends State<MainNavigation> {
             width: 40,
             height: 40,
             decoration: const BoxDecoration(
-              color: Color(0xFFD9E2CD), // light green circle
+              color: Color(0xFFD9E2CD),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.camera_alt_outlined, color: Color(0xFF4A5A3A), size: 20),

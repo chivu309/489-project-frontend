@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'login_page.dart';
 import 'routine_progress_page.dart';
+import 'edit_skin_profile_page.dart';
+import '../services/skin_profile_storage.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -18,11 +20,37 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _avatarUrl;
   bool _isUploadingAvatar = false;
 
+  // ---------- Skin profile state ----------
+  String _skinType = 'Not set';
+  String _skinConcern = 'Not set';
+  String _allergies = 'None';
+  String _lastAnalysisDate = '-';
+  bool _isLoadingSkinProfile = true;
+
   @override
   void initState() {
     super.initState();
     // Load any previously saved avatar URL from the user's metadata
     _avatarUrl = _currentUser?.userMetadata?['avatar_url'] as String?;
+    _loadSkinProfile();
+  }
+
+  Future<void> _loadSkinProfile() async {
+    try {
+      final profile = await SkinProfileStorage.loadProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          _skinType = profile['skin_type'] ?? 'Not set';
+          _skinConcern = profile['skin_concern'] ?? 'Not set';
+          _allergies = profile['allergies'] ?? 'None';
+          _lastAnalysisDate = profile['last_analysis_date'] ?? '-';
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load skin profile: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingSkinProfile = false);
+    }
   }
 
   Future<void> _pickAndUploadAvatar() async {
@@ -63,8 +91,6 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final userId = _currentUser!.id;
       final fileBytes = await pickedFile.readAsBytes();
-      // Each user's avatar lives at a path starting with their own ID —
-      // this is what the storage policies check against
       final filePath = '$userId/avatar.jpg';
 
       await Supabase.instance.client.storage.from('avatars').uploadBinary(
@@ -74,12 +100,8 @@ class _ProfilePageState extends State<ProfilePage> {
       );
 
       final publicUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(filePath);
-
-      // Cache-busting so the new photo shows immediately instead of a
-      // stale cached version at the same URL
       final freshUrl = '$publicUrl?t=${DateTime.now().millisecondsSinceEpoch}';
 
-      // Save the URL onto the user's account so it persists across sessions
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(data: {'avatar_url': freshUrl}),
       );
@@ -248,21 +270,43 @@ class _ProfilePageState extends State<ProfilePage> {
               const Text('Skin Profile',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               TextButton(
-                onPressed: () {
-                  // TODO: navigate to edit skin profile screen
+                onPressed: () async {
+                  final saved = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditSkinProfilePage(
+                        initialSkinType: _skinType == 'Not set' ? 'Sensitive' : _skinType,
+                        initialSkinConcern: _skinConcern == 'Not set' ? 'Acne' : _skinConcern,
+                        initialAllergies: _allergies,
+                      ),
+                    ),
+                  );
+                  if (saved == true) {
+                    _loadSkinProfile(); // refresh after editing
+                  }
                 },
                 child: const Text('Edit'),
               ),
             ],
           ),
           const Divider(height: 20),
-          _buildInfoRow('Skin Type', 'Sensitive'),
-          const Divider(height: 20),
-          _buildInfoRow('Skin concern', 'Acne'),
-          const Divider(height: 20),
-          _buildInfoRow('Allergies', 'None'),
-          const Divider(height: 20),
-          _buildInfoRow('Last skin analyses', '12/05/2026', icon: Icons.calendar_today_outlined),
+          _isLoadingSkinProfile
+              ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator()),
+          )
+              : Column(
+            children: [
+              _buildInfoRow('Skin Type', _skinType),
+              const Divider(height: 20),
+              _buildInfoRow('Skin concern', _skinConcern),
+              const Divider(height: 20),
+              _buildInfoRow('Allergies', _allergies),
+              const Divider(height: 20),
+              _buildInfoRow('Last skin analyses', _lastAnalysisDate,
+                  icon: Icons.calendar_today_outlined),
+            ],
+          ),
         ],
       ),
     );

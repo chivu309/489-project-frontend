@@ -1,14 +1,17 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'login_page.dart';
 import 'routine_progress_page.dart';
 import 'edit_skin_profile_page.dart';
+import 'privacy_policy_page.dart';
+import 'terms_conditions_page.dart';
+import 'reminder_page.dart';
 import '../services/skin_profile_storage.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final VoidCallback? onGoToRoutine;
+  const ProfilePage({super.key, this.onGoToRoutine});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -30,7 +33,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // Load any previously saved avatar URL from the user's metadata
     _avatarUrl = _currentUser?.userMetadata?['avatar_url'] as String?;
     _loadSkinProfile();
   }
@@ -54,7 +56,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _pickAndUploadAvatar() async {
-    // Ask the user: camera or gallery
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
@@ -158,6 +159,31 @@ class _ProfilePageState extends State<ProfilePage> {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const RoutineProgressPage()),
+        );
+        break;
+      case 'Log My Routine':
+      // Instead of pushing RoutinePage as a new screen (which has no
+      // Scaffold/nav bar of its own), we ask MainNavigation to switch
+      // to the Routine tab, so it appears exactly as if the user tapped
+      // the bottom nav icon directly.
+        widget.onGoToRoutine?.call();
+        break;
+      case 'Privacy Policy':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
+        );
+        break;
+      case 'Reminder':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ReminderPage()),
+        );
+        break;
+      case 'Terms and Conditions':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const TermsConditionsPage()),
         );
         break;
       default:
@@ -282,7 +308,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   );
                   if (saved == true) {
-                    _loadSkinProfile(); // refresh after editing
+                    _loadSkinProfile();
                   }
                 },
                 child: const Text('Edit'),

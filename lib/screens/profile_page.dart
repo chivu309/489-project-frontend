@@ -162,10 +162,6 @@ class _ProfilePageState extends State<ProfilePage> {
         );
         break;
       case 'Log My Routine':
-      // Instead of pushing RoutinePage as a new screen (which has no
-      // Scaffold/nav bar of its own), we ask MainNavigation to switch
-      // to the Routine tab, so it appears exactly as if the user tapped
-      // the bottom nav icon directly.
         widget.onGoToRoutine?.call();
         break;
       case 'Privacy Policy':

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/routine_storage.dart';
 
 // A single checklist item (e.g. "Cleanser") with its icon and checked state
 class RoutineItem {
@@ -23,18 +24,20 @@ class _RoutinePageState extends State<RoutinePage> {
   // show the "Every day routine" prompt or the actual checklist
   bool _hasLoggedToday = false;
 
-  // Morning routine items — pre-checked to match your mockup ("completed")
+  bool _isLoadingProgress = true;
+
+  // Morning routine items
   final List<RoutineItem> _morningItems = [
-    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined, isChecked: false),
-    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined, isChecked: false),
-    RoutineItem(name: 'Sunscreen', icon: Icons.wb_sunny_outlined, isChecked: false),
+    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
+    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined),
+    RoutineItem(name: 'Sunscreen', icon: Icons.wb_sunny_outlined),
   ];
 
-  // Evening routine items — 1 of 3 checked, matching your mockup
+  // Evening routine items
   final List<RoutineItem> _eveningItems = [
-    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined, isChecked: false),
-    RoutineItem(name: 'Serum', icon: Icons.opacity_outlined, isChecked: false),
-    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined, isChecked: false),
+    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
+    RoutineItem(name: 'Serum', icon: Icons.opacity_outlined),
+    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined),
   ];
 
   // Static product list for the Products tab
@@ -44,6 +47,36 @@ class _RoutinePageState extends State<RoutinePage> {
     {'name': 'Brand name', 'icon': Icons.local_drink_outlined},
     {'name': 'Brand name', 'icon': Icons.colorize_outlined},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedProgress();
+  }
+
+  Future<void> _loadSavedProgress() async {
+    try {
+      final todayLog = await RoutineStorage.loadTodayLog();
+      if (todayLog != null) {
+        final morningDone = List<String>.from(todayLog['morning_completed'] ?? []);
+        final eveningDone = List<String>.from(todayLog['evening_completed'] ?? []);
+
+        setState(() {
+          _hasLoggedToday = true;
+          for (var item in _morningItems) {
+            item.isChecked = morningDone.contains(item.name);
+          }
+          for (var item in _eveningItems) {
+            item.isChecked = eveningDone.contains(item.name);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load today\'s log: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingProgress = false);
+    }
+  }
 
   // How many items are checked, out of how many total, across both routines
   int get _totalCompleted =>
@@ -75,7 +108,9 @@ class _RoutinePageState extends State<RoutinePage> {
             _buildTabSelector(),
             const SizedBox(height: 20),
             Expanded(
-              child: SingleChildScrollView(
+              child: _isLoadingProgress
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
                 child: _selectedTab == 0 ? _buildRoutineTab() : _buildProductsTab(),
               ),
             ),
@@ -264,11 +299,24 @@ class _RoutinePageState extends State<RoutinePage> {
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            onPressed: () {
-              // TODO: persist today's log (local storage or backend) later
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Routine log saved!')),
-              );
+            onPressed: () async {
+              try {
+                await RoutineStorage.saveTodayLog(
+                  completedMorning: _morningItems.where((i) => i.isChecked).map((i) => i.name).toList(),
+                  completedEvening: _eveningItems.where((i) => i.isChecked).map((i) => i.name).toList(),
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Routine log saved!')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to save: $e')),
+                  );
+                }
+              }
             },
             child: const Text('Save Log'),
           ),

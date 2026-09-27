@@ -43,7 +43,7 @@ class RoutineStorage {
   }
 
   // Loads ALL of this user's logs, ordered by most recent first —
-  // used for streak calculation and a future Routine Progress calendar view
+  // used for streak calculation and the Routine Progress calendar view
   static Future<List<Map<String, dynamic>>> loadAllLogs() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return [];
@@ -83,5 +83,45 @@ class RoutineStorage {
     }
 
     return streak;
+  }
+
+  // Returns the set of dates (normalized, no time component) where the
+  // user completed at least one item — used for calendar/streak views
+  static Future<Set<DateTime>> loadActiveDatesSet() async {
+    final allLogs = await loadAllLogs();
+    final dates = <DateTime>{};
+
+    for (final log in allLogs) {
+      final morning = List<String>.from(log['morning_completed'] ?? []);
+      final evening = List<String>.from(log['evening_completed'] ?? []);
+      if (morning.isNotEmpty || evening.isNotEmpty) {
+        final parts = (log['log_date'] as String).split('-');
+        dates.add(DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2])));
+      }
+    }
+
+    return dates;
+  }
+
+  // Longest-ever streak of consecutive active days (not just the current one)
+  static Future<int> calculateLongestStreak() async {
+    final dates = await loadActiveDatesSet();
+    if (dates.isEmpty) return 0;
+
+    final sorted = dates.toList()..sort();
+    int longest = 1;
+    int current = 1;
+
+    for (int i = 1; i < sorted.length; i++) {
+      final diff = sorted[i].difference(sorted[i - 1]).inDays;
+      if (diff == 1) {
+        current++;
+        if (current > longest) longest = current;
+      } else if (diff > 1) {
+        current = 1;
+      }
+    }
+
+    return longest;
   }
 }

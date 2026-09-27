@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_page.dart';
+import 'routine_progress_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -44,6 +45,21 @@ class _ProfilePageState extends State<ProfilePage> {
         MaterialPageRoute(builder: (_) => const LoginPage()),
             (route) => false,
       );
+    }
+  }
+
+  void _handleMenuTap(String label) {
+    switch (label) {
+      case 'My Routine':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const RoutineProgressPage()),
+        );
+        break;
+    // Other items (Log My Routine, Privacy Policy, Reminder,
+    // Terms and Conditions) not wired up yet — add cases here later
+      default:
+        break;
     }
   }
 
@@ -193,9 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildMenuItem(String label, {required bool isLast}) {
     return InkWell(
-      onTap: () {
-        // TODO: navigate to the relevant screen for each item
-      },
+      onTap: () => _handleMenuTap(label),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         decoration: BoxDecoration(

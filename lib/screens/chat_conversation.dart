@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
@@ -21,6 +22,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
 
   bool _isLoading = false;
 
+  // Once a recommendation/escalation has been shown, later messages are plain
+  // conversation and must not trigger another assessment.
+  bool _assessmentShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +40,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   }
 
   void _addBotMessage(String text) {
+    if (!mounted) return;
     setState(() => _messages.add(ChatMessage(text: text, isUser: false)));
     _scrollToBottom();
   }
@@ -56,7 +62,6 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     });
   }
 
-  // Builds the conversation history in the shape the backend expects
   List<Map<String, String>> _buildHistory() {
     return _messages
         .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'text': m.text})
@@ -68,27 +73,28 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     if (text.isEmpty || _isLoading) return;
 
     _textController.clear();
-    final historyBeforeThisTurn = _buildHistory(); // snapshot BEFORE adding new message
+    final historyBeforeThisTurn = _buildHistory();
     _addUserMessage(text);
     setState(() => _isLoading = true);
 
     try {
+      // 60s because Render's free tier can take up to a minute to wake up
       final result = await ApiService.sendChatMessage(
         conversationHistory: historyBeforeThisTurn,
         latestMessage: text,
-      ).timeout(const Duration(seconds: 20));
-
-      debugPrint('RAW BACKEND RESPONSE: $result');
+        alreadyAssessed: _assessmentShown,
+      ).timeout(const Duration(seconds: 60));
 
       _addBotMessage(result['reply'] ?? "Let's continue...");
 
       if (result['ready_to_assess'] == true && result['assessment'] != null) {
-        final assessment = result['assessment'] as Map<String, dynamic>;
-        _showAssessmentResult(assessment);
-        // Conversation intentionally stays open — user can keep chatting
+        _showAssessmentResult(result['assessment'] as Map<String, dynamic>);
       }
+    } on TimeoutException {
+      _addBotMessage("The server took too long to respond. Please try again in a moment.");
     } catch (e) {
-      _addBotMessage("Sorry, something went wrong: $e");
+      _addBotMessage("Sorry, something went wrong. Please try again.");
+      debugPrint('Chat error: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -98,6 +104,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     final status = assessment['status'];
 
     if (status == 'escalated') {
+      _assessmentShown = true;
       _addBotMessage("⚠️ ${assessment['message']}\n\nPlease consult a professional for further guidance.");
     } else if (status == 'follow_up_needed') {
       _addBotMessage(assessment['message'] ?? 'Could you share a bit more detail?');
@@ -107,15 +114,18 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         _addBotMessage("Sorry, no recommendation data was returned.");
         return;
       }
+      _assessmentShown = true;
+
       final morning = ((rec['morning_routine'] as List?) ?? []).join(', ');
       final evening = ((rec['evening_routine'] as List?) ?? []).join(', ');
       final confidenceValue = assessment['confidence'];
-      final confidencePercent = confidenceValue != null ? ((confidenceValue as num) * 100).round() : 0;
+      final confidencePercent =
+      confidenceValue != null ? ((confidenceValue as num) * 100).round() : 0;
 
       _addBotMessage(
-          "🌞 Morning: ${morning.isEmpty ? 'N/A' : morning}\n\n"
-              "🌙 Evening: ${evening.isEmpty ? 'N/A' : evening}\n\n"
-              "Confidence: $confidencePercent%"
+        "🌞 Morning: ${morning.isEmpty ? 'N/A' : morning}\n\n"
+            "🌙 Evening: ${evening.isEmpty ? 'N/A' : evening}\n\n"
+            "Confidence: $confidencePercent%",
       );
     }
   }
@@ -165,7 +175,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.all(12),
-              child: CircularProgressIndicator(),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 8),
+                  Text('Glow is thinking…', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                ],
+              ),
             ),
 
           Padding(

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/routine_storage.dart';
+import '../services/saved_routine_storage.dart';
 
-// A single checklist item (e.g. "Cleanser") with its icon and checked state
+// A single checklist item (e.g. "Gentle cleanser") with its icon and checked state
 class RoutineItem {
   final String name;
   final IconData icon;
@@ -20,25 +21,17 @@ class _RoutinePageState extends State<RoutinePage> {
   // 0 = Routine tab, 1 = Products tab
   int _selectedTab = 0;
 
-  // Whether the user has started today's log yet — controls whether we
-  // show the "Every day routine" prompt or the actual checklist
+  // Whether the user has started today's log yet
   bool _hasLoggedToday = false;
 
   bool _isLoadingProgress = true;
 
-  // Morning routine items
-  final List<RoutineItem> _morningItems = [
-    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
-    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined),
-    RoutineItem(name: 'Sunscreen', icon: Icons.wb_sunny_outlined),
-  ];
+  // True when the checklist comes from the user's saved AI routine,
+  // false when we're showing the default steps
+  bool _usingSavedRoutine = false;
 
-  // Evening routine items
-  final List<RoutineItem> _eveningItems = [
-    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
-    RoutineItem(name: 'Serum', icon: Icons.opacity_outlined),
-    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined),
-  ];
+  List<RoutineItem> _morningItems = _defaultMorning();
+  List<RoutineItem> _eveningItems = _defaultEvening();
 
   // Static product list for the Products tab
   final List<Map<String, dynamic>> _products = [
@@ -48,37 +41,90 @@ class _RoutinePageState extends State<RoutinePage> {
     {'name': 'Brand name', 'icon': Icons.colorize_outlined},
   ];
 
+  // ---------- Default steps, used when no routine has been saved ----------
+  static List<RoutineItem> _defaultMorning() => [
+    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
+    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined),
+    RoutineItem(name: 'Sunscreen', icon: Icons.wb_sunny_outlined),
+  ];
+
+  static List<RoutineItem> _defaultEvening() => [
+    RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
+    RoutineItem(name: 'Serum', icon: Icons.opacity_outlined),
+    RoutineItem(name: 'Moisturizer', icon: Icons.spa_outlined),
+  ];
+
+  // Picks an icon from keywords in the step text, since AI steps are free text
+  IconData _iconFor(String step) {
+    final s = step.toLowerCase();
+    if (s.contains('cleans') || s.contains('wash')) return Icons.water_drop_outlined;
+    if (s.contains('spf') || s.contains('sunscreen') || s.contains('sun')) return Icons.wb_sunny_outlined;
+    if (s.contains('moistur') || s.contains('cream') || s.contains('lotion')) return Icons.spa_outlined;
+    if (s.contains('serum') || s.contains('acid') || s.contains('niacinamide')) return Icons.opacity_outlined;
+    if (s.contains('toner')) return Icons.blur_on_outlined;
+    return Icons.check_circle_outline;
+  }
+
+  List<RoutineItem> _itemsFromSteps(List<String> steps) {
+    return steps
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .map((s) => RoutineItem(name: s, icon: _iconFor(s)))
+        .toList();
+  }
+
   @override
   void initState() {
     super.initState();
-    _loadSavedProgress();
+    _load();
   }
 
-  Future<void> _loadSavedProgress() async {
+  // Loads the saved routine (if any), then today's log, and applies both
+  Future<void> _load() async {
     try {
+      final saved = await SavedRoutineStorage.loadActiveRoutine();
       final todayLog = await RoutineStorage.loadTodayLog();
+
+      var morning = _defaultMorning();
+      var evening = _defaultEvening();
+      var usingSaved = false;
+
+      if (saved != null) {
+        final savedMorning = _itemsFromSteps(List<String>.from(saved['morning_steps'] ?? []));
+        final savedEvening = _itemsFromSteps(List<String>.from(saved['evening_steps'] ?? []));
+        if (savedMorning.isNotEmpty) morning = savedMorning;
+        if (savedEvening.isNotEmpty) evening = savedEvening;
+        usingSaved = savedMorning.isNotEmpty || savedEvening.isNotEmpty;
+      }
+
+      var hasLogged = false;
       if (todayLog != null) {
         final morningDone = List<String>.from(todayLog['morning_completed'] ?? []);
         final eveningDone = List<String>.from(todayLog['evening_completed'] ?? []);
+        for (final item in morning) {
+          item.isChecked = morningDone.contains(item.name);
+        }
+        for (final item in evening) {
+          item.isChecked = eveningDone.contains(item.name);
+        }
+        hasLogged = true;
+      }
 
+      if (mounted) {
         setState(() {
-          _hasLoggedToday = true;
-          for (var item in _morningItems) {
-            item.isChecked = morningDone.contains(item.name);
-          }
-          for (var item in _eveningItems) {
-            item.isChecked = eveningDone.contains(item.name);
-          }
+          _morningItems = morning;
+          _eveningItems = evening;
+          _usingSavedRoutine = usingSaved;
+          _hasLoggedToday = hasLogged || _hasLoggedToday;
         });
       }
     } catch (e) {
-      debugPrint('Failed to load today\'s log: $e');
+      debugPrint('Failed to load routine: $e');
     } finally {
       if (mounted) setState(() => _isLoadingProgress = false);
     }
   }
 
-  // How many items are checked, out of how many total, across both routines
   int get _totalCompleted =>
       _morningItems.where((i) => i.isChecked).length +
           _eveningItems.where((i) => i.isChecked).length;
@@ -87,11 +133,9 @@ class _RoutinePageState extends State<RoutinePage> {
 
   double get _progressFraction => _totalSteps == 0 ? 0 : _totalCompleted / _totalSteps;
 
-  // Returns "completed" if every item in the list is checked,
-  // otherwise "X of Y" (e.g. "1 of 3")
   String _badgeText(List<RoutineItem> items) {
     final checkedCount = items.where((i) => i.isChecked).length;
-    if (checkedCount == items.length) return 'completed';
+    if (items.isNotEmpty && checkedCount == items.length) return 'completed';
     return '$checkedCount of ${items.length}';
   }
 
@@ -110,8 +154,13 @@ class _RoutinePageState extends State<RoutinePage> {
             Expanded(
               child: _isLoadingProgress
                   ? const Center(child: CircularProgressIndicator())
-                  : SingleChildScrollView(
-                child: _selectedTab == 0 ? _buildRoutineTab() : _buildProductsTab(),
+                  : RefreshIndicator(
+                // Pull down to reload after saving a new routine in the chat
+                onRefresh: _load,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: _selectedTab == 0 ? _buildRoutineTab() : _buildProductsTab(),
+                ),
               ),
             ),
           ],
@@ -120,7 +169,7 @@ class _RoutinePageState extends State<RoutinePage> {
     );
   }
 
-  // ---------- Header: title + "today" button ----------
+  // ---------- Header ----------
   Widget _buildHeader() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -135,17 +184,26 @@ class _RoutinePageState extends State<RoutinePage> {
                 style: TextStyle(fontSize: 13, color: Colors.black54)),
           ],
         ),
-        OutlinedButton.icon(
-          onPressed: () {
-            // TODO: hook up a real date picker later if needed
-          },
-          icon: const Icon(Icons.calendar_today_outlined, size: 16),
-          label: const Text('today'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.black87,
-            side: const BorderSide(color: Colors.black26),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          ),
+        Row(
+          children: [
+            IconButton(
+              tooltip: 'Reload my routine',
+              onPressed: _load,
+              icon: const Icon(Icons.refresh, size: 22),
+            ),
+            OutlinedButton.icon(
+              onPressed: () {
+                // TODO: hook up a real date picker later if needed
+              },
+              icon: const Icon(Icons.calendar_today_outlined, size: 16),
+              label: const Text('today'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.black87,
+                side: const BorderSide(color: Colors.black26),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -191,7 +249,6 @@ class _RoutinePageState extends State<RoutinePage> {
     return _buildChecklistState();
   }
 
-  // Routine page 1: prompt to start logging
   Widget _buildBeforeLogState() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,12 +266,16 @@ class _RoutinePageState extends State<RoutinePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Update your every day routine',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                _usingSavedRoutine ? 'Your saved routine is ready' : 'Update your every day routine',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 10),
-              const Text(
-                'Your skincare routine has been updated based on your latest skin analysis. Since skin can change over time and be affected by the environment, regular routine adjustments can help keep your skincare effective.',
-                style: TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
+              Text(
+                _usingSavedRoutine
+                    ? 'Tick off each step as you complete it today. Your progress feeds your streak.'
+                    : 'You have not saved a routine yet. Chat with Glow and tap "Save this routine", or log the default steps for now.',
+                style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
               ),
               const SizedBox(height: 16),
               Align(
@@ -236,11 +297,16 @@ class _RoutinePageState extends State<RoutinePage> {
     );
   }
 
-  // Routine page 2: progress bar + morning/evening checklists
   Widget _buildChecklistState() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          _usingSavedRoutine ? 'Using your saved routine' : 'Using the default steps',
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 8),
+
         // Progress bar
         Container(
           width: double.infinity,
@@ -313,9 +379,10 @@ class _RoutinePageState extends State<RoutinePage> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to save: $e')),
+                    const SnackBar(content: Text('Could not save your log. Please try again.')),
                   );
                 }
+                debugPrint('Save log error: $e');
               }
             },
             child: const Text('Save Log'),
@@ -325,7 +392,6 @@ class _RoutinePageState extends State<RoutinePage> {
     );
   }
 
-  // One routine card (Morning or Evening) with its checklist items
   Widget _buildRoutineCard({
     required String title,
     required IconData icon,
@@ -391,7 +457,8 @@ class _RoutinePageState extends State<RoutinePage> {
           const SizedBox(width: 12),
           Icon(item.icon, size: 18, color: Colors.black54),
           const SizedBox(width: 8),
-          Text(item.name),
+          // Expanded so long AI step text wraps instead of overflowing
+          Expanded(child: Text(item.name)),
         ],
       ),
     );

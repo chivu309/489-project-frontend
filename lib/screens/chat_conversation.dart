@@ -1,11 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/saved_routine_storage.dart';
 
 class ChatMessage {
   final String text;
   final bool isUser;
-  ChatMessage({required this.text, required this.isUser});
+
+  // Set only on recommendation messages, so the bubble can offer "Save"
+  final Map<String, dynamic>? routine;
+  bool isSaving;
+  bool isSaved;
+
+  ChatMessage({
+    required this.text,
+    required this.isUser,
+    this.routine,
+    this.isSaving = false,
+    this.isSaved = false,
+  });
 }
 
 class ChatConversationPage extends StatefulWidget {
@@ -39,9 +52,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     super.dispose();
   }
 
-  void _addBotMessage(String text) {
+  void _addBotMessage(String text, {Map<String, dynamic>? routine}) {
     if (!mounted) return;
-    setState(() => _messages.add(ChatMessage(text: text, isUser: false)));
+    setState(() => _messages.add(ChatMessage(text: text, isUser: false, routine: routine)));
     _scrollToBottom();
   }
 
@@ -126,8 +139,86 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         "🌞 Morning: ${morning.isEmpty ? 'N/A' : morning}\n\n"
             "🌙 Evening: ${evening.isEmpty ? 'N/A' : evening}\n\n"
             "Confidence: $confidencePercent%",
+        routine: rec, // keeps the structured lists so the bubble can offer "Save"
       );
     }
+  }
+
+  Future<void> _saveRoutine(ChatMessage message) async {
+    final rec = message.routine;
+    if (rec == null || message.isSaving || message.isSaved) return;
+
+    setState(() => message.isSaving = true);
+
+    try {
+      await SavedRoutineStorage.saveRoutine(
+        morningSteps: List<String>.from(rec['morning_routine'] ?? []),
+        eveningSteps: List<String>.from(rec['evening_routine'] ?? []),
+        note: rec['note'] as String?,
+      );
+
+      if (mounted) {
+        setState(() => message.isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Routine saved! You can log it from the Routine tab.')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Save routine error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save the routine. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => message.isSaving = false);
+    }
+  }
+
+  Widget _buildBubble(ChatMessage message) {
+    return Align(
+      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        decoration: BoxDecoration(
+          color: message.isUser ? const Color(0xFFBCC2B6) : const Color(0xFFF0F2ED),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message.text),
+            if (message.routine != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: (message.isSaved || message.isSaving)
+                      ? null
+                      : () => _saveRoutine(message),
+                  icon: message.isSaving
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : Icon(message.isSaved ? Icons.check : Icons.bookmark_border, size: 18),
+                  label: Text(message.isSaved ? 'Saved' : 'Save this routine'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF4A5A3A),
+                    side: const BorderSide(color: Color(0xFF4A5A3A)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -153,22 +244,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return Align(
-                  alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
-                    decoration: BoxDecoration(
-                      color: message.isUser ? const Color(0xFFBCC2B6) : const Color(0xFFF0F2ED),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(message.text),
-                  ),
-                );
-              },
+              itemBuilder: (context, index) => _buildBubble(_messages[index]),
             ),
           ),
 

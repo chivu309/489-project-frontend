@@ -8,6 +8,7 @@ import 'privacy_policy_page.dart';
 import 'terms_conditions_page.dart';
 import 'reminder_page.dart';
 import '../services/skin_profile_storage.dart';
+import 'my_routine_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback? onGoToRoutine;
@@ -158,7 +159,9 @@ class _ProfilePageState extends State<ProfilePage> {
       case 'My Routine':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const RoutineProgressPage()),
+          MaterialPageRoute(
+            builder: (_) => MyRoutinePage(onLogRoutine: widget.onGoToRoutine),
+          ),
         );
         break;
       case 'Log My Routine':

@@ -6,6 +6,7 @@ import 'chatbot_page.dart';
 import 'routine_page.dart';
 import 'profile_page.dart';
 import 'scan_screen.dart';
+import 'scan_questions_page.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -43,12 +44,18 @@ class MainNavigationState extends State<MainNavigation> {
   }
 
   Future<void> _openCamera() async {
-    final imagePath = await Navigator.push<String>(
+    final imagePaths = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
     );
-    if (imagePath != null) {
-      debugPrint('Photo captured: $imagePath');
+
+    if (imagePaths == null || imagePaths.length != 3) return;
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ScanQuestionsPage(imagePaths: imagePaths)),
+      );
     }
   }
 

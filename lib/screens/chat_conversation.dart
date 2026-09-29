@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/saved_routine_storage.dart';
+import '../services/confidence_display_settings.dart';
 
 class ChatMessage {
   final String text;
@@ -132,13 +133,16 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       final morning = ((rec['morning_routine'] as List?) ?? []).join(', ');
       final evening = ((rec['evening_routine'] as List?) ?? []).join(', ');
       final confidenceValue = assessment['confidence'];
-      final confidencePercent =
-      confidenceValue != null ? ((confidenceValue as num) * 100).round() : 0;
+      final confidenceLabel = assessment['confidence_label'] as String?;
+
+      final confidenceText = ConfidenceDisplaySettings.showNumeric.value
+          ? (confidenceValue != null ? '${((confidenceValue as num) * 100).round()}%' : 'Unknown')
+          : (confidenceLabel ?? 'Unknown');
 
       _addBotMessage(
         "🌞 Morning: ${morning.isEmpty ? 'N/A' : morning}\n\n"
             "🌙 Evening: ${evening.isEmpty ? 'N/A' : evening}\n\n"
-            "Confidence: $confidencePercent%",
+            "Confidence: $confidenceText",
         routine: rec, // keeps the structured lists so the bubble can offer "Save"
       );
     }
@@ -236,6 +240,20 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           ],
         ),
         centerTitle: true,
+        actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: ConfidenceDisplaySettings.showNumeric,
+            builder: (context, showNumeric, _) {
+              return IconButton(
+                tooltip: showNumeric ? 'Showing numeric confidence' : 'Showing verbal confidence',
+                icon: Icon(showNumeric ? Icons.percent : Icons.text_fields),
+                onPressed: () {
+                  ConfidenceDisplaySettings.showNumeric.value = !showNumeric;
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [

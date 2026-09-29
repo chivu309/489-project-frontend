@@ -18,11 +18,12 @@ class ApiService {
     }
   }
 
-  // Sends a free-form chat message + history to /chat
   static Future<Map<String, dynamic>> sendChatMessage({
     required List<Map<String, String>> conversationHistory,
     required String latestMessage,
     bool alreadyAssessed = false,
+    String? skinType,
+    String? allergies,
   }) async {
     final url = Uri.parse('$baseUrl/chat');
 
@@ -34,6 +35,8 @@ class ApiService {
           'conversation_history': conversationHistory,
           'latest_message': latestMessage,
           'already_assessed': alreadyAssessed,
+          'skin_type': skinType,
+          'allergies': allergies,
         }),
       );
 

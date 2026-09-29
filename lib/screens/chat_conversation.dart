@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/saved_routine_storage.dart';
 import '../services/confidence_display_settings.dart';
+import '../services/skin_profile_storage.dart';
 
 class ChatMessage {
   final String text;
@@ -40,10 +41,29 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   // conversation and must not trigger another assessment.
   bool _assessmentShown = false;
 
+  // Loaded once from the user's Skin Profile, sent with every /chat call
+  String? _skinType;
+  String? _allergies;
+
   @override
   void initState() {
     super.initState();
     _addBotMessage("Ki ora, I'm Glow! Tell me what's going on with your skin today?");
+    _loadSkinProfile();
+  }
+
+  Future<void> _loadSkinProfile() async {
+    try {
+      final profile = await SkinProfileStorage.loadProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          _skinType = profile['skin_type'] as String?;
+          _allergies = profile['allergies'] as String?;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load skin profile for chat: $e');
+    }
   }
 
   @override
@@ -97,6 +117,8 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         conversationHistory: historyBeforeThisTurn,
         latestMessage: text,
         alreadyAssessed: _assessmentShown,
+        skinType: _skinType,
+        allergies: _allergies,
       ).timeout(const Duration(seconds: 60));
 
       _addBotMessage(result['reply'] ?? "Let's continue...");

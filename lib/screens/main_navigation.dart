@@ -6,6 +6,7 @@ import 'chatbot_page.dart';
 import 'routine_page.dart';
 import 'profile_page.dart';
 import 'scan_screen.dart';
+import 'scan_questions_page.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -38,17 +39,27 @@ class MainNavigationState extends State<MainNavigation> {
 
   void _goToRoutineTab() {
     setState(() {
-      _selectedIndex = 2; // Routine tab's index
+      _selectedIndex = 2;
     });
   }
 
   Future<void> _openCamera() async {
-    final imagePath = await Navigator.push<String>(
+    // IMPORTANT: this must be List<String> — SkinScanScreen pops with
+    // _capturedPaths.whereType<String>().toList(), i.e. all 3 photo paths,
+    // not a single String. Using the wrong generic type here makes the
+    // pop silently fail and strands the user on the camera screen.
+    final imagePaths = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
     );
-    if (imagePath != null) {
-      debugPrint('Photo captured: $imagePath');
+
+    if (imagePaths == null || imagePaths.length != 3) return;
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ScanQuestionsPage(imagePaths: imagePaths)),
+      );
     }
   }
 

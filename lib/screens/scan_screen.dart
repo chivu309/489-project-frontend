@@ -157,7 +157,9 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
     try {
       await _initializeControllerFuture;
 
-      await _controller!.stopImageStream();
+      if (_controller!.value.isStreamingImages) {
+        await _controller!.stopImageStream();
+      }
 
       final XFile rawImage = await _controller!.takePicture();
 
@@ -201,13 +203,30 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
     }
   }
 
-  void _retakeStep(int index) {
+  Future<void> _retakeStep(int index) async {
+    if (_controller == null) return;
+
+    // Always stop any existing stream before starting a new one — starting
+    // while one is already running throws and leaves detection stuck.
+    try {
+      if (_controller!.value.isStreamingImages) {
+        await _controller!.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('Error stopping stream before retake: $e');
+    }
+
     setState(() {
       _currentStep = index;
       _capturedPaths[index] = null;
       _isFaceWellPositioned = false;
     });
-    _controller?.startImageStream(_processCameraImage);
+
+    try {
+      await _controller!.startImageStream(_processCameraImage);
+    } catch (e) {
+      debugPrint('Error starting stream for retake: $e');
+    }
   }
 
   @override

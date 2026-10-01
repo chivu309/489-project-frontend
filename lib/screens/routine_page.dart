@@ -179,11 +179,6 @@ class _RoutinePageState extends State<RoutinePage> {
         ),
         Row(
           children: [
-            IconButton(
-              tooltip: 'Reload my routine',
-              onPressed: _load,
-              icon: const Icon(Icons.refresh, size: 22),
-            ),
             OutlinedButton.icon(
               onPressed: () => showRoutineCalendar(context),
               icon: const Icon(Icons.calendar_today_outlined, size: 16),

@@ -6,6 +6,7 @@ import 'routine_page.dart';
 import 'profile_page.dart';
 import 'scan_screen.dart';
 import 'scan_questions_page.dart';
+import '../services/saved_routine_storage.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -28,7 +29,11 @@ class MainNavigationState extends State<MainNavigation> {
     _pages = [
       HomePage(onGoToRoutine: _goToRoutineTab, refreshSignal: _homeRefresh),
       const ChatbotPage(),
-      const RoutinePage(),
+      // Rebuilds RoutinePage (and reloads its data) whenever a new routine is saved
+      ValueListenableBuilder<int>(
+        valueListenable: SavedRoutineStorage.routineVersion,
+        builder: (_, version, __) => RoutinePage(key: ValueKey(version)),
+      ),
       ProfilePage(onGoToRoutine: _goToRoutineTab),
     ];
   }

@@ -1,7 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SavedRoutineStorage {
   static final _client = Supabase.instance.client;
+
+  /// Increases every time a routine is saved, so pages showing the routine
+  /// (e.g. the Routine tab) know to reload.
+  static final ValueNotifier<int> routineVersion = ValueNotifier<int>(0);
 
   // Saves a new routine and deactivates the user's previous one
   static Future<void> saveRoutine({
@@ -26,6 +31,9 @@ class SavedRoutineStorage {
       'note': note,
       'is_active': true,
     });
+
+    // Tell listeners (Routine tab) that the routine changed
+    routineVersion.value++;
   }
 
   // Returns the user's active routine, or null if they haven't saved one

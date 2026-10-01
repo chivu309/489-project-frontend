@@ -67,14 +67,6 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.black12),
-                    ),
-                    child: const Icon(Icons.notifications_none, size: 22),
-                  ),
                 ],
               ),
 

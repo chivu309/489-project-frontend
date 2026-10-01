@@ -1,7 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:skincare_ai_system/main.dart';
+import '../services/streak_service.dart';
 import 'scan_screen.dart';
 import 'scan_questions_page.dart';
 
@@ -9,91 +8,15 @@ class HomePage extends StatefulWidget {
   /// Switches the bottom nav to the Routine tab (same as tapping it)
   final VoidCallback? onGoToRoutine;
 
-  /// Bumped by MainNavigation every time the Home tab is opened,
-  /// so the streak refreshes after the user logs a routine.
-  final ValueListenable<int>? refreshSignal;
-
-  const HomePage({super.key, this.onGoToRoutine, this.refreshSignal});
+  const HomePage({super.key, this.onGoToRoutine});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  int _streak = 0;
-  bool _loggedToday = false;
-  bool _isLoadingStreak = true;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.refreshSignal?.addListener(_loadStreak);
-    _loadStreak();
-  }
-
-  @override
-  void dispose() {
-    widget.refreshSignal?.removeListener(_loadStreak);
-    super.dispose();
-  }
-
-  // ---------- Streak ----------
-
-  String _dateKey(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-          '${d.month.toString().padLeft(2, '0')}-'
-          '${d.day.toString().padLeft(2, '0')}';
-
-  bool _hasAnyStep(dynamic list) => list is List && list.isNotEmpty;
-
-  Future<void> _loadStreak() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
-      if (mounted) setState(() => _isLoadingStreak = false);
-      return;
-    }
-
-    try {
-      final rows = await Supabase.instance.client
-          .from('routine_logs')
-          .select('log_date, morning_completed, evening_completed')
-          .eq('user_id', user.id)
-          .order('log_date', ascending: false)
-          .limit(400);
-
-      // Days where at least one step was ticked
-      final activeDays = <String>{};
-      for (final row in rows) {
-        if (_hasAnyStep(row['morning_completed']) ||
-            _hasAnyStep(row['evening_completed'])) {
-          activeDays.add(row['log_date'].toString().substring(0, 10));
-        }
-      }
-
-      final today = DateTime.now();
-      final todayKey = _dateKey(today);
-      final loggedToday = activeDays.contains(todayKey);
-
-      // Streak still counts if today isn't logged yet (day isn't over)
-      var day = loggedToday ? today : today.subtract(const Duration(days: 1));
-      var streak = 0;
-      while (activeDays.contains(_dateKey(day))) {
-        streak++;
-        day = day.subtract(const Duration(days: 1));
-      }
-
-      if (mounted) {
-        setState(() {
-          _streak = streak;
-          _loggedToday = loggedToday;
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to load streak: $e');
-    } finally {
-      if (mounted) setState(() => _isLoadingStreak = false);
-    }
-  }
+  // The streak itself is loaded by StreakService (shared with the nav badge)
+  Future<void> _loadStreak() => StreakService.refresh();
 
   // ---------- Scan ----------
 
@@ -266,16 +189,36 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildStreakCard() {
+    // Rebuild whenever StreakService updates
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        StreakService.currentStreak,
+        StreakService.loggedToday,
+        StreakService.isLoading,
+      ]),
+      builder: (context, _) => _streakCardContent(
+        streak: StreakService.currentStreak.value,
+        loggedToday: StreakService.loggedToday.value,
+        isLoading: StreakService.isLoading.value,
+      ),
+    );
+  }
+
+  Widget _streakCardContent({
+    required int streak,
+    required bool loggedToday,
+    required bool isLoading,
+  }) {
     final String title;
-    if (_isLoadingStreak) {
+    if (isLoading) {
       title = 'Loading your streak...';
-    } else if (_streak == 0) {
+    } else if (streak == 0) {
       title = 'Start your streak today';
     } else {
-      title = '$_streak-day streak';
+      title = '$streak-day streak';
     }
 
-    final String subtitle = _loggedToday
+    final String subtitle = loggedToday
         ? "Today's routine is logged. Nice work!"
         : 'Tap to log today\'s routine';
 
@@ -320,8 +263,8 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             Icon(
-              _loggedToday ? Icons.check_circle : Icons.chevron_right,
-              color: _loggedToday ? const Color(0xFF4A5A3A) : Colors.black45,
+              loggedToday ? Icons.check_circle : Icons.chevron_right,
+              color: loggedToday ? const Color(0xFF4A5A3A) : Colors.black45,
             ),
           ],
         ),

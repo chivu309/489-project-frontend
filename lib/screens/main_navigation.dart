@@ -7,6 +7,7 @@ import 'profile_page.dart';
 import 'scan_screen.dart';
 import 'scan_questions_page.dart';
 import '../services/saved_routine_storage.dart';
+import '../services/streak_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -18,16 +19,13 @@ class MainNavigation extends StatefulWidget {
 class MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
-  /// Bumped whenever the Home tab is opened so Home reloads the streak
-  final ValueNotifier<int> _homeRefresh = ValueNotifier<int>(0);
-
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _pages = [
-      HomePage(onGoToRoutine: _goToRoutineTab, refreshSignal: _homeRefresh),
+      HomePage(onGoToRoutine: _goToRoutineTab),
       const ChatbotPage(),
       // Rebuilds RoutinePage (and reloads its data) whenever a new routine is saved
       ValueListenableBuilder<int>(
@@ -36,12 +34,9 @@ class MainNavigationState extends State<MainNavigation> {
       ),
       ProfilePage(onGoToRoutine: _goToRoutineTab),
     ];
-  }
 
-  @override
-  void dispose() {
-    _homeRefresh.dispose();
-    super.dispose();
+    // Load the streak once at start-up (used by Home card + nav badge)
+    StreakService.refresh();
   }
 
   void _goToRoutineTab() {
@@ -50,7 +45,9 @@ class MainNavigationState extends State<MainNavigation> {
 
   void _onTabTapped(int index) {
     setState(() => _selectedIndex = index);
-    if (index == 0) _homeRefresh.value++;
+    // Refresh the streak whenever the user switches tabs,
+    // so it updates after they Save Log on the Routine page.
+    StreakService.refresh();
   }
 
   Future<void> _openCamera() async {
@@ -90,7 +87,12 @@ class MainNavigationState extends State<MainNavigation> {
               _navItem(icon: Icons.home_outlined, label: 'Home', index: 0),
               _navItem(icon: Icons.chat_bubble_outline, label: 'Chat', index: 1),
               _cameraItem(),
-              _navItem(icon: Icons.menu_book_outlined, label: 'Routine', index: 2),
+              _navItem(
+                icon: Icons.menu_book_outlined,
+                label: 'Routine',
+                index: 2,
+                showStreakBadge: true,
+              ),
               _navItem(icon: Icons.person_outline, label: 'Profile', index: 3),
             ],
           ),
@@ -99,10 +101,37 @@ class MainNavigationState extends State<MainNavigation> {
     );
   }
 
-  Widget _navItem(
-      {required IconData icon, required String label, required int index}) {
+  Widget _navItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    bool showStreakBadge = false,
+  }) {
     final bool isSelected = _selectedIndex == index;
     final Color color = isSelected ? const Color(0xFF4A5A3A) : Colors.black45;
+
+    Widget iconWidget = Icon(icon, color: color, size: 24);
+
+    if (showStreakBadge) {
+      iconWidget = ValueListenableBuilder<int>(
+        valueListenable: StreakService.currentStreak,
+        builder: (_, streak, child) {
+          if (streak <= 0) return child!; // no badge when there's no streak
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              child!,
+              Positioned(
+                top: -6,
+                right: -18,
+                child: _streakBadge(streak),
+              ),
+            ],
+          );
+        },
+        child: iconWidget,
+      );
+    }
 
     return GestureDetector(
       onTap: () => _onTabTapped(index),
@@ -110,10 +139,33 @@ class MainNavigationState extends State<MainNavigation> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 24),
+          iconWidget,
           const SizedBox(height: 2),
           Text(label, style: TextStyle(color: color, fontSize: 11)),
         ],
+      ),
+    );
+  }
+
+  Widget _streakBadge(int streak) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: StreakService.loggedToday,
+      builder: (_, loggedToday, __) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          // Dark green when today is logged, orange to nudge when not yet
+          color: loggedToday ? const Color(0xFF4A5A3A) : const Color(0xFFE8833A),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white, width: 1.5),
+        ),
+        child: Text(
+          '🔥$streak',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }

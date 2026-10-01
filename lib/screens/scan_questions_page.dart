@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/confidence_display_settings.dart';
+import '../services/saved_routine_storage.dart';
 
 class ScanQuestionsPage extends StatefulWidget {
   final List<String> imagePaths; // three photos from SkinScanScreen
@@ -22,10 +24,31 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
   String? _skinCondition;
   String? _rednessHistory;
 
-  bool get _welcomeComplete =>
-      _isPregnant != null && _hasHealthConcern != null && _ageGroup != null && _mainConcern != null;
+  bool _consentGiven = false;
 
-  bool get _knowYourSkinComplete => _skinCondition != null && _rednessHistory != null;
+  bool get _welcomeComplete =>
+      _isPregnant != null &&
+          _hasHealthConcern != null &&
+          _ageGroup != null &&
+          _mainConcern != null;
+
+  // Delete the scan photos from the phone when this page closes
+  // (after Done, Skip or Back), so Glow doesn't keep them.
+  @override
+  void dispose() {
+    for (final path in widget.imagePaths) {
+      try {
+        final file = File(path);
+        if (file.existsSync()) file.deleteSync();
+      } catch (e) {
+        debugPrint('Could not delete scan photo: $e');
+      }
+    }
+    super.dispose();
+  }
+
+  bool get _knowYourSkinComplete =>
+      _skinCondition != null && _rednessHistory != null && _consentGiven;
 
   Future<void> _submit() async {
     setState(() => _isSubmitting = true);
@@ -56,46 +79,161 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
   void _showResult(Map<String, dynamic> result) {
     final status = result['status'];
 
-    String title;
-    String body;
+    // ---------- Escalated / follow-up: simple message, nothing to save ----------
+    if (status == 'escalated' || status == 'follow_up_needed') {
+      final isEscalated = status == 'escalated';
+      final title = isEscalated ? 'Please see a professional' : 'We need a bit more info';
+      final body = isEscalated
+          ? '${result['message']}\n\nWe recommend consulting a healthcare professional for further guidance.'
+          : (result['message'] ?? 'Please provide more detail.');
 
-    if (status == 'escalated') {
-      title = 'Please see a professional';
-      body = '${result['message']}\n\nWe recommend consulting a healthcare professional for further guidance.';
-    } else if (status == 'follow_up_needed') {
-      title = 'We need a bit more info';
-      body = result['message'] ?? 'Please provide more detail.';
-    } else {
-      final rec = result['recommendation'] as Map<String, dynamic>?;
-      final morning = ((rec?['morning_routine'] as List?) ?? []).join(', ');
-      final evening = ((rec?['evening_routine'] as List?) ?? []).join(', ');
-      final confidenceValue = result['confidence'];
-      final confidenceLabel = result['confidence_label'] as String?;
-      final confidenceText = ConfidenceDisplaySettings.showNumeric.value
-          ? (confidenceValue != null ? '${((confidenceValue as num) * 100).round()}%' : 'Unknown')
-          : (confidenceLabel ?? 'Unknown');
-
-      title = 'Your routine';
-      body = '🌞 Morning: ${morning.isEmpty ? 'N/A' : morning}\n\n'
-          '🌙 Evening: ${evening.isEmpty ? 'N/A' : evening}\n\n'
-          'Confidence: $confidenceText';
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Center(child: Text(title)),
+          content: SingleChildScrollView(child: Text(body)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext); // close dialog
+                Navigator.pop(context); // leave the questions page
+              },
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+      return;
     }
+
+    // ---------- Recommendation ----------
+    final rec = result['recommendation'] as Map<String, dynamic>?;
+    final morningSteps =
+    ((rec?['morning_routine'] as List?) ?? []).map((e) => e.toString()).toList();
+    final eveningSteps =
+    ((rec?['evening_routine'] as List?) ?? []).map((e) => e.toString()).toList();
+    final note = rec?['note'] as String?;
+    final canSave = morningSteps.isNotEmpty || eveningSteps.isNotEmpty;
+
+    bool isSaving = false;
+    bool isSaved = false;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(child: Text(body)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext); // close dialog
-              Navigator.pop(context); // leave the questions page
-            },
-            child: const Text('Done'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> save() async {
+            setDialogState(() => isSaving = true);
+            try {
+              await SavedRoutineStorage.saveRoutine(
+                morningSteps: morningSteps,
+                eveningSteps: eveningSteps,
+                note: note,
+              );
+              setDialogState(() => isSaved = true);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Routine saved ✓')),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Could not save routine: $e')),
+                );
+              }
+            } finally {
+              setDialogState(() => isSaving = false);
+            }
+          }
+
+          return AlertDialog(
+            title: const Center(child: Text('Your routine')),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _routineSection('🌞 Morning', morningSteps),
+                  const SizedBox(height: 14),
+                  _routineSection('🌙 Evening', eveningSteps),
+                  if (note != null && note.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text(note, style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                  ],
+                  const SizedBox(height: 14),
+                  // Rebuilds if the user flips the numeric/verbal toggle
+                  ValueListenableBuilder<bool>(
+                    valueListenable: ConfidenceDisplaySettings.showNumeric,
+                    builder: (_, showNumeric, __) => Text(
+                      'Confidence: ${_confidenceText(result, showNumeric)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Skincare guidance only - not a diagnosis or treatment.',
+                    style: TextStyle(fontSize: 11, color: Colors.black45),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (canSave)
+                TextButton.icon(
+                  onPressed: (isSaving || isSaved) ? null : save,
+                  icon: isSaving
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : Icon(isSaved ? Icons.check : Icons.bookmark_add_outlined),
+                  label: Text(isSaved ? 'Saved' : 'Save this routine'),
+                ),
+              TextButton(
+                onPressed: isSaving
+                    ? null
+                    : () {
+                  Navigator.pop(dialogContext); // close dialog
+                  Navigator.pop(context); // leave the questions page
+                },
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  String _confidenceText(Map<String, dynamic> result, bool showNumeric) {
+    final confidenceValue = result['confidence'];
+    final confidenceLabel = result['confidence_label'] as String?;
+    if (showNumeric) {
+      return confidenceValue is num ? '${(confidenceValue * 100).round()}%' : 'Unknown';
+    }
+    return confidenceLabel ?? 'Unknown';
+  }
+
+  Widget _routineSection(String heading, List<String> steps) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(heading, style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        if (steps.isEmpty)
+          const Text('N/A')
+        else
+          ...steps.asMap().entries.map(
+                (e) => Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text('${e.key + 1}. ${e.value}'),
+            ),
+          ),
+      ],
     );
   }
 
@@ -204,6 +342,56 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
     );
   }
 
+  Widget _buildConsentBox() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F2ED),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.lock_outline, size: 18, color: Color(0xFF4A5A3A)),
+              SizedBox(width: 6),
+              Text('Your privacy', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '• Your photo is sent over a secure connection to Google\'s Gemini AI for analysis.\n'
+                '• Glow does not save your photo. It is deleted from your phone once you leave this page.\n'
+                '• Glow gives general skincare guidance only. It is not a medical diagnosis or treatment. '
+                'Please see a healthcare professional for any medical concern.',
+            style: TextStyle(fontSize: 12, color: Colors.black87, height: 1.4),
+          ),
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () => setState(() => _consentGiven = !_consentGiven),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _consentGiven,
+                  activeColor: const Color(0xFF4A5A3A),
+                  onChanged: (v) => setState(() => _consentGiven = v ?? false),
+                ),
+                const Expanded(
+                  child: Text(
+                    'I understand and agree',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildKnowYourSkinStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,6 +415,8 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
           _rednessHistory,
               (v) => setState(() => _rednessHistory = v),
         ),
+        const SizedBox(height: 28),
+        _buildConsentBox(),
       ],
     );
   }

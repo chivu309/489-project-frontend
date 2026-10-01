@@ -1,32 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:skincare_ai_system/main.dart';
+import '../services/streak_service.dart';
 import 'scan_screen.dart';
 import 'scan_questions_page.dart';
 
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+class HomePage extends StatefulWidget {
+  /// Switches the bottom nav to the Routine tab (same as tapping it)
+  final VoidCallback? onGoToRoutine;
+
+  const HomePage({super.key, this.onGoToRoutine});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  // The streak itself is loaded by StreakService (shared with the nav badge)
+  Future<void> _loadStreak() => StreakService.refresh();
+
+  // ---------- Scan ----------
+
+  Future<void> _startScan() async {
+    final imagePaths = await Navigator.push<List<String>>(
+      context,
+      MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
+    );
+    if (!mounted) return;
+    if (imagePaths != null && imagePaths.length == 3) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ScanQuestionsPage(imagePaths: imagePaths),
+        ),
+      );
+    }
+  }
+
+  // ---------- UI ----------
 
   @override
   Widget build(BuildContext context) {
-
-      return SafeArea(
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadStreak,
         child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: Column(
-            // Aligns children to the left instead of centering them
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              //notification bell icon
+              // Greeting + notification bell
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween, // pushes items to opposite ends
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Left side: greeting text stacked vertically
                   const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Kia ora,',
-                        style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 35, fontWeight: FontWeight.bold),
                       ),
                       Text(
                         'How is your skin today?',
@@ -34,8 +67,6 @@ class HomePage extends StatelessWidget {
                       ),
                     ],
                   ),
-
-                  // Right side: notification bell icon inside a circle border
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -47,73 +78,56 @@ class HomePage extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 24), // empty vertical space (like margin)
+              const SizedBox(height: 24),
 
-              // button with icon and text
+              // Skin check card
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFDCE3D5), // soft sage green background
-                  borderRadius: BorderRadius.circular(20), // rounded corners
+                  color: const Color(0xFFDCE3D5),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Expanded = lets the text take up remaining space
-                        // without overflowing next to the icon
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Start your skin check',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w600),
                               ),
                               SizedBox(height: 6),
                               Text(
                                 'Get personalised skincare routine with Glow!',
-                                style: TextStyle(fontSize: 13, color: Colors.black54),
+                                style: TextStyle(
+                                    fontSize: 13, color: Colors.black54),
                               ),
                             ],
                           ),
                         ),
-                        const Icon(Icons.face_retouching_natural, size: 40),
+                        Icon(Icons.face_retouching_natural, size: 40),
                       ],
                     ),
-
                     const SizedBox(height: 16),
-
-                    // Full-width button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4A5A3A), // dark green
-                          foregroundColor: Colors.white, // text color
+                          backgroundColor: const Color(0xFF4A5A3A),
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () async {
-                          final imagePaths = await Navigator.push<List<String>>(
-                            context,
-                            MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
-                          );
-                          if (!context.mounted) return;
-                          if (imagePaths != null && imagePaths.length == 3) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ScanQuestionsPage(imagePaths: imagePaths),
-                              ),
-                            );
-                          }
-                        },
+                        onPressed: _startScan,
                         child: const Text('Analyses Skin with AI'),
                       ),
                     ),
@@ -121,9 +135,14 @@ class HomePage extends StatelessWidget {
                 ),
               ),
 
+              const SizedBox(height: 16),
+
+              // Streak card
+              _buildStreakCard(),
+
               const SizedBox(height: 28),
 
-              // Instruction of the app and how it works
+              // How it works
               const Text(
                 'How it works',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -148,7 +167,7 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // warning message about the app
+              // Disclaimer
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -165,18 +184,101 @@ class HomePage extends StatelessWidget {
             ],
           ),
         ),
-      );
-
+      ),
+    );
   }
 
-  // helper method to create a row for each step
+  Widget _buildStreakCard() {
+    // Rebuild whenever StreakService updates
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        StreakService.currentStreak,
+        StreakService.loggedToday,
+        StreakService.isLoading,
+      ]),
+      builder: (context, _) => _streakCardContent(
+        streak: StreakService.currentStreak.value,
+        loggedToday: StreakService.loggedToday.value,
+        isLoading: StreakService.isLoading.value,
+      ),
+    );
+  }
+
+  Widget _streakCardContent({
+    required int streak,
+    required bool loggedToday,
+    required bool isLoading,
+  }) {
+    final String title;
+    if (isLoading) {
+      title = 'Loading your streak...';
+    } else if (streak == 0) {
+      title = 'Start your streak today';
+    } else {
+      title = '$streak-day streak';
+    }
+
+    final String subtitle = loggedToday
+        ? "Today's routine is logged. Nice work!"
+        : 'Tap to log today\'s routine';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: widget.onGoToRoutine,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black12),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCE3D5),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.local_fire_department,
+                  color: Color(0xFF4A5A3A), size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              loggedToday ? Icons.check_circle : Icons.chevron_right,
+              color: loggedToday ? const Color(0xFF4A5A3A) : Colors.black45,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStepRow({
     required IconData icon,
     required String title,
     required String subtitle,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10), // space below each row
+      margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.black12),
@@ -185,7 +287,7 @@ class HomePage extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 22),
-          const SizedBox(width: 12), // space between icon and text
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -33,14 +33,6 @@ class _RoutinePageState extends State<RoutinePage> {
   List<RoutineItem> _morningItems = _defaultMorning();
   List<RoutineItem> _eveningItems = _defaultEvening();
 
-  // Static product list for the Products tab
-  final List<Map<String, dynamic>> _products = [
-    {'name': 'Brand name', 'icon': Icons.science_outlined},
-    {'name': 'Brand name', 'icon': Icons.account_balance_wallet_outlined},
-    {'name': 'Brand name', 'icon': Icons.local_drink_outlined},
-    {'name': 'Brand name', 'icon': Icons.colorize_outlined},
-  ];
-
   // ---------- Default steps, used when no routine has been saved ----------
   static List<RoutineItem> _defaultMorning() => [
     RoutineItem(name: 'Cleanser', icon: Icons.water_drop_outlined),
@@ -59,7 +51,7 @@ class _RoutinePageState extends State<RoutinePage> {
     final s = step.toLowerCase();
     if (s.contains('cleans') || s.contains('wash')) return Icons.water_drop_outlined;
     if (s.contains('spf') || s.contains('sunscreen') || s.contains('sun')) return Icons.wb_sunny_outlined;
-    if (s.contains('moistur') || s.contains('cream') || s.contains('lotion')) return Icons.spa_outlined;
+    if (s.contains('moisture') || s.contains('cream') || s.contains('lotion')) return Icons.spa_outlined;
     if (s.contains('serum') || s.contains('acid') || s.contains('niacinamide')) return Icons.opacity_outlined;
     if (s.contains('toner')) return Icons.blur_on_outlined;
     return Icons.check_circle_outline;
@@ -464,35 +456,26 @@ class _RoutinePageState extends State<RoutinePage> {
     );
   }
 
-  // ---------- Products tab content ----------
+  // ---------- Products tab content (hasn't done) ----------
   Widget _buildProductsTab() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(14),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 60),
       child: Column(
-        children: _products.asMap().entries.map((entry) {
-          final index = entry.key;
-          final product = entry.value;
-          final isLast = index == _products.length - 1;
-
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-            decoration: BoxDecoration(
-              border: isLast
-                  ? null
-                  : const Border(bottom: BorderSide(color: Colors.black12)),
-            ),
-            child: Row(
-              children: [
-                Icon(product['icon'] as IconData, size: 24),
-                const SizedBox(width: 16),
-                Text(product['name'] as String, style: const TextStyle(fontSize: 16)),
-              ],
-            ),
-          );
-        }).toList(),
+        children: [
+          const Icon(Icons.shopping_bag_outlined, size: 48, color: Colors.black26),
+          const SizedBox(height: 16),
+          const Text(
+            'Product tracking coming soon',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "We're working on letting you save and track the products in your routine.",
+            style: TextStyle(color: Colors.black54),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

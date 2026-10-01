@@ -16,7 +16,6 @@ class SkinScanScreen extends StatefulWidget {
 
 class _SkinScanScreenState extends State<SkinScanScreen> {
   CameraController? _controller;
-
   Future<void>? _initializeControllerFuture;
 
   final FaceDetector _faceDetector = FaceDetector(
@@ -27,11 +26,11 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
   );
 
   bool _isFaceWellPositioned = false;
-
   bool _isDetecting = false;
+  bool _isTakingPhoto = false;
+  bool _isNavigating = false;
 
   int _currentStep = 0;
-
   final List<String?> _capturedPaths = [null, null, null];
 
   final List<String> _stepInstructions = [
@@ -40,13 +39,37 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
     'Turn slightly to your right',
   ];
 
-  bool _isNavigating = false;
-
   @override
   void initState() {
     super.initState();
     _initCamera();
   }
+
+  // ---------- Safe stream helpers (avoid "No camera is streaming images") ----------
+
+  Future<void> _safeStartStream() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    if (c.value.isStreamingImages) return;
+    try {
+      await c.startImageStream(_processCameraImage);
+    } catch (e) {
+      debugPrint('startImageStream error: $e');
+    }
+  }
+
+  Future<void> _safeStopStream() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    if (!c.value.isStreamingImages) return;
+    try {
+      await c.stopImageStream();
+    } catch (e) {
+      debugPrint('stopImageStream error: $e');
+    }
+  }
+
+  // ---------- Camera setup ----------
 
   void _initCamera() async {
     final status = await Permission.camera.request();
@@ -80,13 +103,14 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
       return;
     }
 
-    _controller!.startImageStream(_processCameraImage);
-
+    await _safeStartStream();
     setState(() {});
   }
 
+  // ---------- Face detection ----------
+
   void _processCameraImage(CameraImage image) async {
-    if (_isDetecting) return;
+    if (_isDetecting || _isTakingPhoto) return;
     _isDetecting = true;
 
     try {
@@ -97,15 +121,15 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
       }
 
       final faces = await _faceDetector.processImage(inputImage);
-
-      if (!mounted) return;
+      if (!mounted) {
+        _isDetecting = false;
+        return;
+      }
 
       if (faces.isEmpty) {
         setState(() => _isFaceWellPositioned = false);
       } else {
-        final face = faces.first;
-        final box = face.boundingBox;
-
+        final box = faces.first.boundingBox;
         final previewSize = _controller!.value.previewSize!;
         final frameWidth = previewSize.height;
         final frameHeight = previewSize.width;
@@ -116,8 +140,8 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
         final isCentered =
             (faceCenterX - frameWidth / 2).abs() < frameWidth * 0.15 &&
                 (faceCenterY - frameHeight / 2).abs() < frameHeight * 0.15;
-
-        final isGoodSize = box.width > frameWidth * 0.35 && box.width < frameWidth * 0.85;
+        final isGoodSize =
+            box.width > frameWidth * 0.35 && box.width < frameWidth * 0.85;
 
         setState(() => _isFaceWellPositioned = isCentered && isGoodSize);
       }
@@ -134,8 +158,9 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
       orElse: () => widget.cameras.first,
     );
 
-    final rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
-        InputImageRotation.rotation0deg;
+    final rotation =
+        InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+            InputImageRotation.rotation0deg;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
@@ -153,70 +178,90 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
     );
   }
 
+  // ---------- Capture ----------
+
   Future<void> _takePhoto() async {
+    if (_isTakingPhoto || _isNavigating) return;
+    _isTakingPhoto = true;
+
     try {
       await _initializeControllerFuture;
-
-      await _controller!.stopImageStream();
+      await _safeStopStream();
 
       final XFile rawImage = await _controller!.takePicture();
 
       final bytes = await File(rawImage.path).readAsBytes();
       final decodedImage = img.decodeImage(bytes);
-
       if (decodedImage == null) {
         debugPrint('Failed to decode image');
+        await _safeStartStream();
         return;
       }
 
-      final flippedImage = img.flipHorizontal(decodedImage);
-      final flippedBytes = img.encodeJpg(flippedImage);
-
+      final flippedBytes = img.encodeJpg(img.flipHorizontal(decodedImage));
       final Directory tempDir = await getTemporaryDirectory();
-      final String fileName = 'skin_scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final String savedPath = '${tempDir.path}/$fileName';
-
-      final File savedImage = await File(savedPath).writeAsBytes(flippedBytes);
+      final String savedPath =
+          '${tempDir.path}/skin_scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await File(savedPath).writeAsBytes(flippedBytes);
 
       if (!mounted) return;
 
-      setState(() {
-        _capturedPaths[_currentStep] = savedImage.path;
-      });
+      setState(() => _capturedPaths[_currentStep] = savedPath);
 
-      if (_currentStep < 2) {
+      // Find the next empty slot (handles retakes too)
+      final nextEmpty = _capturedPaths.indexWhere((p) => p == null);
+
+      if (nextEmpty != -1) {
         setState(() {
-          _currentStep++;
+          _currentStep = nextEmpty;
           _isFaceWellPositioned = false;
         });
-        await _controller!.startImageStream(_processCameraImage);
+        await _safeStartStream();
       } else {
-        if (mounted && !_isNavigating) {
-          _isNavigating = true;
-          Navigator.pop(context, _capturedPaths.whereType<String>().toList());
-        }
+        // All 3 photos done -> return them to the previous page
+        _isNavigating = true;
+        Navigator.pop<List<String>>(
+          context,
+          _capturedPaths.whereType<String>().toList(),
+        );
       }
     } catch (e) {
       debugPrint('Error taking photo: $e');
+      _isNavigating = false; // don't get stuck if pop failed
+      await _safeStartStream();
+    } finally {
+      _isTakingPhoto = false;
     }
   }
 
-  void _retakeStep(int index) {
+  Future<void> _retakeStep(int index) async {
+    if (_isTakingPhoto) return;
     setState(() {
       _currentStep = index;
       _capturedPaths[index] = null;
       _isFaceWellPositioned = false;
     });
-    _controller?.startImageStream(_processCameraImage);
+    await _safeStartStream();
   }
 
   @override
   void dispose() {
-    _controller?.stopImageStream();
-    _controller?.dispose();
+    final c = _controller;
+    _controller = null;
+    if (c != null) {
+      if (c.value.isInitialized && c.value.isStreamingImages) {
+        c.stopImageStream().catchError((e) {
+          debugPrint('dispose stopImageStream error: $e');
+        }).whenComplete(() => c.dispose());
+      } else {
+        c.dispose();
+      }
+    }
     _faceDetector.close();
     super.dispose();
   }
+
+  // ---------- UI ----------
 
   @override
   Widget build(BuildContext context) {
@@ -225,7 +270,8 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
+          if (snapshot.connectionState != ConnectionState.done ||
+              _controller == null) {
             return const Center(child: CircularProgressIndicator());
           }
           return Stack(
@@ -250,11 +296,13 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                   width: 260,
                   height: 320,
                   child: CustomPaint(
-                    painter: FaceGuidePainter(isWellPositioned: _isFaceWellPositioned),
+                    painter:
+                    FaceGuidePainter(isWellPositioned: _isFaceWellPositioned),
                   ),
                 ),
               ),
 
+              // Shutter button
               Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
@@ -267,7 +315,9 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: _isFaceWellPositioned ? Colors.greenAccent : Colors.white38,
+                          color: _isFaceWellPositioned
+                              ? Colors.greenAccent
+                              : Colors.white38,
                           width: 4,
                         ),
                       ),
@@ -275,7 +325,9 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                         margin: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _isFaceWellPositioned ? Colors.white : Colors.white38,
+                          color: _isFaceWellPositioned
+                              ? Colors.white
+                              : Colors.white38,
                         ),
                       ),
                     ),
@@ -283,30 +335,29 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                 ),
               ),
 
+              // Close button
               Positioned(
                 top: 48,
                 left: 16,
                 child: IconButton(
                   icon: const Icon(Icons.close, color: Colors.white, size: 30),
                   onPressed: () {
-                    debugPrint('Close button tapped, _isNavigating=$_isNavigating');
                     if (_isNavigating) return;
                     _isNavigating = true;
                     Navigator.pop(context);
-                    Future.microtask(() {
-                      if (mounted) _isNavigating = false;
-                    });
                   },
                 ),
               ),
 
+              // Instruction
               Positioned(
                 top: 100,
                 left: 0,
                 right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(20),
@@ -319,6 +370,7 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                 ),
               ),
 
+              // Thumbnails (tap to retake)
               Positioned(
                 bottom: 140,
                 left: 0,
@@ -338,7 +390,9 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isCurrent ? Colors.greenAccent : Colors.white38,
+                            color: isCurrent
+                                ? Colors.greenAccent
+                                : Colors.white38,
                             width: 2,
                           ),
                           color: Colors.black26,
@@ -352,7 +406,9 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
                         child: path == null
                             ? Icon(
                           Icons.face_outlined,
-                          color: isCurrent ? Colors.greenAccent : Colors.white38,
+                          color: isCurrent
+                              ? Colors.greenAccent
+                              : Colors.white38,
                           size: 28,
                         )
                             : null,
@@ -380,38 +436,14 @@ class FaceGuidePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
 
-    final facePath = Path();
     final w = size.width;
     final h = size.height;
-    facePath.moveTo(w * 0.5, 0);
+    final facePath = Path()..moveTo(w * 0.5, 0);
 
-    // Right side of face
-    facePath.cubicTo(
-      w * 0.92, h * 0.04,
-      w * 0.98, h * 0.55,
-      w * 0.68, h * 0.88,
-    );
-
-    // Rounded chin
-    facePath.cubicTo(
-      w * 0.62, h * 0.96,
-      w * 0.56, h,
-      w * 0.50, h,
-    );
-
-    facePath.cubicTo(
-      w * 0.44, h,
-      w * 0.38, h * 0.96,
-      w * 0.32, h * 0.88,
-    );
-
-    // Left side of face
-    facePath.cubicTo(
-      w * 0.02, h * 0.55,
-      w * 0.08, h * 0.04,
-      w * 0.5, 0,
-    );
-
+    facePath.cubicTo(w * 0.92, h * 0.04, w * 0.98, h * 0.55, w * 0.68, h * 0.88);
+    facePath.cubicTo(w * 0.62, h * 0.96, w * 0.56, h, w * 0.50, h);
+    facePath.cubicTo(w * 0.44, h, w * 0.38, h * 0.96, w * 0.32, h * 0.88);
+    facePath.cubicTo(w * 0.02, h * 0.55, w * 0.08, h * 0.04, w * 0.5, 0);
     facePath.close();
 
     canvas.drawPath(facePath, paint);

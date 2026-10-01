@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/confidence_display_settings.dart';
@@ -23,10 +24,31 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
   String? _skinCondition;
   String? _rednessHistory;
 
-  bool get _welcomeComplete =>
-      _isPregnant != null && _hasHealthConcern != null && _ageGroup != null && _mainConcern != null;
+  bool _consentGiven = false;
 
-  bool get _knowYourSkinComplete => _skinCondition != null && _rednessHistory != null;
+  bool get _welcomeComplete =>
+      _isPregnant != null &&
+          _hasHealthConcern != null &&
+          _ageGroup != null &&
+          _mainConcern != null;
+
+  // Delete the scan photos from the phone when this page closes
+  // (after Done, Skip or Back), so Glow doesn't keep them.
+  @override
+  void dispose() {
+    for (final path in widget.imagePaths) {
+      try {
+        final file = File(path);
+        if (file.existsSync()) file.deleteSync();
+      } catch (e) {
+        debugPrint('Could not delete scan photo: $e');
+      }
+    }
+    super.dispose();
+  }
+
+  bool get _knowYourSkinComplete =>
+      _skinCondition != null && _rednessHistory != null && _consentGiven;
 
   Future<void> _submit() async {
     setState(() => _isSubmitting = true);
@@ -320,6 +342,56 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
     );
   }
 
+  Widget _buildConsentBox() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F2ED),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.lock_outline, size: 18, color: Color(0xFF4A5A3A)),
+              SizedBox(width: 6),
+              Text('Your privacy', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '• Your photo is sent over a secure connection to Google\'s Gemini AI for analysis.\n'
+                '• Glow does not save your photo. It is deleted from your phone once you leave this page.\n'
+                '• Glow gives general skincare guidance only. It is not a medical diagnosis or treatment. '
+                'Please see a healthcare professional for any medical concern.',
+            style: TextStyle(fontSize: 12, color: Colors.black87, height: 1.4),
+          ),
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () => setState(() => _consentGiven = !_consentGiven),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _consentGiven,
+                  activeColor: const Color(0xFF4A5A3A),
+                  onChanged: (v) => setState(() => _consentGiven = v ?? false),
+                ),
+                const Expanded(
+                  child: Text(
+                    'I understand and agree',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildKnowYourSkinStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,6 +415,8 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
           _rednessHistory,
               (v) => setState(() => _rednessHistory = v),
         ),
+        const SizedBox(height: 28),
+        _buildConsentBox(),
       ],
     );
   }

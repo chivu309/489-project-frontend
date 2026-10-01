@@ -39,26 +39,22 @@ class MainNavigationState extends State<MainNavigation> {
 
   void _goToRoutineTab() {
     setState(() {
-      _selectedIndex = 2;
+      _selectedIndex = 2; // Routine tab's index
     });
   }
 
   Future<void> _openCamera() async {
-    // IMPORTANT: this must be List<String> — SkinScanScreen pops with
-    // _capturedPaths.whereType<String>().toList(), i.e. all 3 photo paths,
-    // not a single String. Using the wrong generic type here makes the
-    // pop silently fail and strands the user on the camera screen.
     final imagePaths = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(builder: (_) => SkinScanScreen(cameras: cameras)),
     );
-
-    if (imagePaths == null || imagePaths.length != 3) return;
-
-    if (mounted) {
+    if (!mounted) return;
+    if (imagePaths != null && imagePaths.length == 3) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ScanQuestionsPage(imagePaths: imagePaths)),
+        MaterialPageRoute(
+          builder: (_) => ScanQuestionsPage(imagePaths: imagePaths),
+        ),
       );
     }
   }

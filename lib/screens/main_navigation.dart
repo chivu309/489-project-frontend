@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'package:skincare_ai_system/main.dart';
 import 'home_page.dart';
 import 'chatbot_page.dart';
@@ -18,29 +17,35 @@ class MainNavigation extends StatefulWidget {
 class MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
+  /// Bumped whenever the Home tab is opened so Home reloads the streak
+  final ValueNotifier<int> _homeRefresh = ValueNotifier<int>(0);
+
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _pages = [
-      const HomePage(),
+      HomePage(onGoToRoutine: _goToRoutineTab, refreshSignal: _homeRefresh),
       const ChatbotPage(),
       const RoutinePage(),
       ProfilePage(onGoToRoutine: _goToRoutineTab),
     ];
   }
 
-  void _onTabTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+  @override
+  void dispose() {
+    _homeRefresh.dispose();
+    super.dispose();
   }
 
   void _goToRoutineTab() {
-    setState(() {
-      _selectedIndex = 2; // Routine tab's index
-    });
+    setState(() => _selectedIndex = 2);
+  }
+
+  void _onTabTapped(int index) {
+    setState(() => _selectedIndex = index);
+    if (index == 0) _homeRefresh.value++;
   }
 
   Future<void> _openCamera() async {
@@ -89,7 +94,8 @@ class MainNavigationState extends State<MainNavigation> {
     );
   }
 
-  Widget _navItem({required IconData icon, required String label, required int index}) {
+  Widget _navItem(
+      {required IconData icon, required String label, required int index}) {
     final bool isSelected = _selectedIndex == index;
     final Color color = isSelected ? const Color(0xFF4A5A3A) : Colors.black45;
 
@@ -121,7 +127,8 @@ class MainNavigationState extends State<MainNavigation> {
               color: Color(0xFFD9E2CD),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.camera_alt_outlined, color: Color(0xFF4A5A3A), size: 20),
+            child: const Icon(Icons.camera_alt_outlined,
+                color: Color(0xFF4A5A3A), size: 20),
           ),
         ],
       ),

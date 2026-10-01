@@ -219,8 +219,21 @@ class _ProfilePageState extends State<ProfilePage> {
         Align(
           alignment: Alignment.centerRight,
           child: IconButton(
-            onPressed: () {
-              // TODO: navigate to edit profile screen
+            tooltip: 'Edit skin profile',
+            onPressed: () async {
+              final saved = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EditSkinProfilePage(
+                    initialSkinType: _skinType == 'Not set' ? 'Sensitive' : _skinType,
+                    initialSkinConcern: _skinConcern == 'Not set' ? 'Acne' : _skinConcern,
+                    initialAllergies: _allergies,
+                  ),
+                ),
+              );
+              if (saved == true) {
+                _loadSkinProfile();
+              }
             },
             icon: const Icon(Icons.edit_outlined),
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/routine_storage.dart';
 import '../services/saved_routine_storage.dart';
+import 'routine_calendar_sheet.dart';
 
 // A single checklist item (e.g. "Gentle cleanser") with its icon and checked state
 class RoutineItem {
@@ -184,9 +185,7 @@ class _RoutinePageState extends State<RoutinePage> {
               icon: const Icon(Icons.refresh, size: 22),
             ),
             OutlinedButton.icon(
-              onPressed: () {
-                // TODO: hook up a real date picker later if needed
-              },
+              onPressed: () => showRoutineCalendar(context),
               icon: const Icon(Icons.calendar_today_outlined, size: 16),
               label: const Text('today'),
               style: OutlinedButton.styleFrom(

@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'login_page.dart';
-import 'routine_progress_page.dart';
 import 'edit_skin_profile_page.dart';
+import 'my_routine_page.dart';
 import 'privacy_policy_page.dart';
 import 'terms_conditions_page.dart';
 import 'reminder_page.dart';
 import '../services/skin_profile_storage.dart';
-import 'my_routine_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback? onGoToRoutine;
@@ -22,6 +21,7 @@ class _ProfilePageState extends State<ProfilePage> {
   User? get _currentUser => Supabase.instance.client.auth.currentUser;
 
   String? _avatarUrl;
+  String? _username;
   bool _isUploadingAvatar = false;
 
   // ---------- Skin profile state ----------
@@ -35,6 +35,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _avatarUrl = _currentUser?.userMetadata?['avatar_url'] as String?;
+    _username = _currentUser?.userMetadata?['username'] as String?;
     _loadSkinProfile();
   }
 
@@ -56,22 +57,24 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  // ---------- Avatar ----------
+
   Future<void> _pickAndUploadAvatar() async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Take a photo'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Choose from gallery'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
           ],
         ),
@@ -98,10 +101,12 @@ class _ProfilePageState extends State<ProfilePage> {
       await Supabase.instance.client.storage.from('avatars').uploadBinary(
         filePath,
         fileBytes,
-        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+        fileOptions:
+        const FileOptions(upsert: true, contentType: 'image/jpeg'),
       );
 
-      final publicUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(filePath);
+      final publicUrl =
+      Supabase.instance.client.storage.from('avatars').getPublicUrl(filePath);
       final freshUrl = '$publicUrl?t=${DateTime.now().millisecondsSinceEpoch}';
 
       await Supabase.instance.client.auth.updateUser(
@@ -122,19 +127,71 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  // ---------- Username ----------
+
+  Future<void> _editUsername() async {
+    final controller = TextEditingController(text: _username ?? '');
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Change username'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+          decoration: const InputDecoration(hintText: 'Enter a username'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null || newName.isEmpty || newName == _username) return;
+
+    try {
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(data: {'username': newName}),
+      );
+      if (mounted) {
+        setState(() => _username = newName);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Username updated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update username: $e')),
+        );
+      }
+    }
+  }
+
+  // ---------- Sign out ----------
+
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Log out?'),
         content: const Text('Are you sure you want to log out?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Log out'),
           ),
         ],
@@ -154,6 +211,8 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  // ---------- Menu ----------
+
   void _handleMenuTap(String label) {
     switch (label) {
       case 'My Routine':
@@ -165,6 +224,7 @@ class _ProfilePageState extends State<ProfilePage> {
         );
         break;
       case 'Log My Routine':
+      // Same as tapping the Routine tab in the bottom nav
         widget.onGoToRoutine?.call();
         break;
       case 'Privacy Policy':
@@ -190,6 +250,25 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _openEditSkinProfile() async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditSkinProfilePage(
+          initialSkinType: _skinType == 'Not set' ? 'Sensitive' : _skinType,
+          initialSkinConcern:
+          _skinConcern == 'Not set' ? 'Acne' : _skinConcern,
+          initialAllergies: _allergies,
+        ),
+      ),
+    );
+    if (saved == true) {
+      _loadSkinProfile();
+    }
+  }
+
+  // ---------- UI ----------
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -212,81 +291,97 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildAvatarSection() {
-    final displayName = _currentUser?.email ?? 'Guest';
+    final email = _currentUser?.email;
+    final displayName = (_username != null && _username!.isNotEmpty)
+        ? _username!
+        : (email != null ? email.split('@').first : 'Guest');
 
     return Column(
       children: [
         Align(
           alignment: Alignment.centerRight,
           child: IconButton(
-            tooltip: 'Edit skin profile',
-            onPressed: () async {
-              final saved = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => EditSkinProfilePage(
-                    initialSkinType: _skinType == 'Not set' ? 'Sensitive' : _skinType,
-                    initialSkinConcern: _skinConcern == 'Not set' ? 'Acne' : _skinConcern,
-                    initialAllergies: _allergies,
-                  ),
-                ),
-              );
-              if (saved == true) {
-                _loadSkinProfile();
-              }
-            },
+            tooltip: 'Change username',
+            onPressed: _editUsername,
             icon: const Icon(Icons.edit_outlined),
           ),
         ),
-        Stack(
-          children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: const Color(0xFFDCE3D5),
-              backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-              child: _avatarUrl == null
-                  ? const Icon(Icons.person, size: 50, color: Colors.black54)
-                  : null,
-            ),
-            if (_isUploadingAvatar)
-              Positioned.fill(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.black38,
-                  ),
-                  child: const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+        Center(
+          child: Stack(
+            children: [
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: const Color(0xFFDCE3D5),
+                backgroundImage:
+                _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
+                child: _avatarUrl == null
+                    ? const Icon(Icons.person, size: 50, color: Colors.black54)
+                    : null,
+              ),
+              if (_isUploadingAvatar)
+                Positioned.fill(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black38,
+                    ),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: GestureDetector(
-                onTap: _isUploadingAvatar ? null : _pickAndUploadAvatar,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFDCE3D5),
-                    shape: BoxShape.circle,
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: _isUploadingAvatar ? null : _pickAndUploadAvatar,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFDCE3D5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.camera_alt_outlined, size: 16),
                   ),
-                  child: const Icon(Icons.camera_alt_outlined, size: 16),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 10),
-        Text(
-          displayName,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-          textAlign: TextAlign.center,
+        Center(
+          child: GestureDetector(
+            onTap: _editUsername,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.edit_outlined,
+                    size: 18, color: Colors.black54),
+              ],
+            ),
+          ),
         ),
+        if (email != null)
+          Center(
+            child: Text(
+              email,
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+          ),
       ],
     );
   }
@@ -308,21 +403,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const Text('Skin Profile',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               TextButton(
-                onPressed: () async {
-                  final saved = await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EditSkinProfilePage(
-                        initialSkinType: _skinType == 'Not set' ? 'Sensitive' : _skinType,
-                        initialSkinConcern: _skinConcern == 'Not set' ? 'Acne' : _skinConcern,
-                        initialAllergies: _allergies,
-                      ),
-                    ),
-                  );
-                  if (saved == true) {
-                    _loadSkinProfile();
-                  }
-                },
+                onPressed: _openEditSkinProfile,
                 child: const Text('Edit'),
               ),
             ],
@@ -363,7 +444,15 @@ class _ProfilePageState extends State<ProfilePage> {
             Text(label, style: const TextStyle(color: Colors.black54)),
           ],
         ),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+        ),
       ],
     );
   }
@@ -397,7 +486,9 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         decoration: BoxDecoration(
-          border: isLast ? null : const Border(bottom: BorderSide(color: Colors.black12)),
+          border: isLast
+              ? null
+              : const Border(bottom: BorderSide(color: Colors.black12)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -418,7 +509,8 @@ class _ProfilePageState extends State<ProfilePage> {
           foregroundColor: const Color(0xFF4A5A3A),
           side: const BorderSide(color: Color(0xFF4A5A3A)),
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         onPressed: _signOut,
         child: const Text('Log out'),

@@ -3,11 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class RoutineStorage {
   static final _client = Supabase.instance.client;
 
-  // Returns today's date as "YYYY-MM-DD", matching Postgres's `date` type
-  static String todayKey() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  // Returns a DateTime formatted as "YYYY-MM-DD"
+  static String formatDateKey(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
+
+  // Returns today's date as "YYYY-MM-DD", matching Postgres's `date` type
+  static String todayKey() => formatDateKey(DateTime.now());
 
   // Loads today's log for the current user, or null if none exists yet
   static Future<Map<String, dynamic>?> loadTodayLog() async {
@@ -68,16 +70,18 @@ class RoutineStorage {
       final morning = List<String>.from(log['morning_completed'] ?? []);
       final evening = List<String>.from(log['evening_completed'] ?? []);
       if (morning.isNotEmpty || evening.isNotEmpty) {
-        activeDates.add(log['log_date'] as String);
+        final dateStr = (log['log_date'] as String).substring(0, 10);
+        activeDates.add(dateStr);
       }
     }
 
-    int streak = 0;
-    DateTime checkDate = DateTime.now();
+    final today = DateTime.now();
+    final doneToday = activeDates.contains(todayKey());
 
-    while (true) {
-      final key = '${checkDate.year}-${checkDate.month.toString().padLeft(2, '0')}-${checkDate.day.toString().padLeft(2, '0')}';
-      if (!activeDates.contains(key)) break;
+    var checkDate = doneToday ? today : today.subtract(const Duration(days: 1));
+    int streak = 0;
+
+    while (activeDates.contains(formatDateKey(checkDate))) {
       streak++;
       checkDate = checkDate.subtract(const Duration(days: 1));
     }

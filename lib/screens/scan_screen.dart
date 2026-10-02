@@ -39,9 +39,15 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
     'Turn slightly to your right',
   ];
 
+  late final CameraDescription _frontCamera;
+
   @override
   void initState() {
     super.initState();
+    _frontCamera = widget.cameras.firstWhere(
+      (cam) => cam.lensDirection == CameraLensDirection.front,
+      orElse: () => widget.cameras.first,
+    );
     _initCamera();
   }
 
@@ -78,13 +84,8 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
       return;
     }
 
-    final frontCamera = widget.cameras.firstWhere(
-          (cam) => cam.lensDirection == CameraLensDirection.front,
-      orElse: () => widget.cameras.first,
-    );
-
     _controller = CameraController(
-      frontCamera,
+      _frontCamera,
       ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.nv21,
@@ -153,13 +154,8 @@ class _SkinScanScreenState extends State<SkinScanScreen> {
   }
 
   InputImage? _convertCameraImage(CameraImage image) {
-    final camera = widget.cameras.firstWhere(
-          (cam) => cam.lensDirection == CameraLensDirection.front,
-      orElse: () => widget.cameras.first,
-    );
-
     final rotation =
-        InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+        InputImageRotationValue.fromRawValue(_frontCamera.sensorOrientation) ??
             InputImageRotation.rotation0deg;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw);

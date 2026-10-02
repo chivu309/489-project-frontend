@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/routine_storage.dart';
 import '../services/saved_routine_storage.dart';
+import '../services/streak_service.dart';
 import 'routine_calendar_sheet.dart';
 
 // A single checklist item (e.g. "Gentle cleanser") with its icon and checked state
@@ -357,6 +358,7 @@ class _RoutinePageState extends State<RoutinePage> {
                   completedMorning: _morningItems.where((i) => i.isChecked).map((i) => i.name).toList(),
                   completedEvening: _eveningItems.where((i) => i.isChecked).map((i) => i.name).toList(),
                 );
+                StreakService.refresh();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Routine log saved!')),

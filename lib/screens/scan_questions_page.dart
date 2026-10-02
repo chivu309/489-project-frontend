@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/confidence_display_settings.dart';
 import '../services/saved_routine_storage.dart';
+import '../services/app_events.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ScanQuestionsPage extends StatefulWidget {
   final List<String> imagePaths; // three photos from SkinScanScreen
@@ -64,6 +66,9 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
         rednessHistory: _rednessHistory!,
       );
 
+      // Record this analysis in the user's skin profile (runs in background)
+      _updateSkinProfile();
+
       if (mounted) _showResult(result);
     } catch (e) {
       if (mounted) {
@@ -73,6 +78,51 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // Map the scan answer to the same values the Profile / Edit page uses
+  String _skinTypeFromCondition(String condition) {
+    switch (condition) {
+      case 'Very dry skin':
+        return 'Dry';
+      case 'Oily skin':
+        return 'Oily';
+      case 'Sensitive skin':
+        return 'Sensitive';
+      case 'Combination skin':
+        return 'Combination';
+      default:
+        return condition;
+    }
+  }
+
+  /// Saves skin type, main concern and today's date to skin_profiles.
+  /// Only these columns are sent, so existing allergies are kept.
+  Future<void> _updateSkinProfile() async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final now = DateTime.now();
+    final today = '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+
+    try {
+      await client.from('skin_profiles').upsert(
+        {
+          'user_id': userId,
+          'skin_type': _skinTypeFromCondition(_skinCondition!),
+          'skin_concern': _mainConcern,
+          'last_analysis_date': today,
+          'updated_at': now.toUtc().toIso8601String(),
+        },
+        onConflict: 'user_id',
+      );
+      AppEvents.skinProfileVersion.value++; // tell Profile tab to reload
+    } catch (e) {
+      debugPrint('Could not update skin profile after scan: $e');
     }
   }
 
@@ -167,7 +217,7 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
                   // Rebuilds if the user flips the numeric/verbal toggle
                   ValueListenableBuilder<bool>(
                     valueListenable: ConfidenceDisplaySettings.showNumeric,
-                    builder: (_, showNumeric, __) => Text(
+                    builder: (_, showNumeric, _) => Text(
                       'Confidence: ${_confidenceText(result, showNumeric)}',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),

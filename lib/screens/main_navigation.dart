@@ -8,6 +8,7 @@ import 'scan_screen.dart';
 import 'scan_questions_page.dart';
 import '../services/saved_routine_storage.dart';
 import '../services/streak_service.dart';
+import '../services/app_events.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -30,9 +31,16 @@ class MainNavigationState extends State<MainNavigation> {
       // Rebuilds RoutinePage (and reloads its data) whenever a new routine is saved
       ValueListenableBuilder<int>(
         valueListenable: SavedRoutineStorage.routineVersion,
-        builder: (_, version, __) => RoutinePage(key: ValueKey(version)),
+        builder: (_, version, _) => RoutinePage(key: ValueKey(version)),
       ),
-      ProfilePage(onGoToRoutine: _goToRoutineTab),
+      // Rebuilds ProfilePage (reloads skin profile) after a scan updates it
+      ValueListenableBuilder<int>(
+        valueListenable: AppEvents.skinProfileVersion,
+        builder: (_, version, _) => ProfilePage(
+          key: ValueKey('profile_$version'),
+          onGoToRoutine: _goToRoutineTab,
+        ),
+      ),
     ];
 
     // Load the streak once at start-up (used by Home card + nav badge)
@@ -150,7 +158,7 @@ class MainNavigationState extends State<MainNavigation> {
   Widget _streakBadge(int streak) {
     return ValueListenableBuilder<bool>(
       valueListenable: StreakService.loggedToday,
-      builder: (_, loggedToday, __) => Container(
+      builder: (_, loggedToday, _) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
         decoration: BoxDecoration(
           // Dark green when today is logged, orange to nudge when not yet

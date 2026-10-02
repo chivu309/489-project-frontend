@@ -167,7 +167,7 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
                   // Rebuilds if the user flips the numeric/verbal toggle
                   ValueListenableBuilder<bool>(
                     valueListenable: ConfidenceDisplaySettings.showNumeric,
-                    builder: (_, showNumeric, __) => Text(
+                    builder: (_, showNumeric, _) => Text(
                       'Confidence: ${_confidenceText(result, showNumeric)}',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
@@ -305,7 +305,7 @@ class _ScanQuestionsPageState extends State<ScanQuestionsPage> {
                       height: 18,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                        : Text(_step == 0 ? 'continue' : 'continue'),
+                        : const Text('Continue'),
                   ),
                 ],
               ),

@@ -49,23 +49,18 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Greeting + notification bell
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // Greeting
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Kia ora,',
-                        style: TextStyle(
-                            fontSize: 35, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        'How is your skin today?',
-                        style: TextStyle(fontSize: 20, color: Colors.black54),
-                      ),
-                    ],
+                  Text(
+                    'Kia ora,',
+                    style: TextStyle(
+                        fontSize: 35, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'How is your skin today?',
+                    style: TextStyle(fontSize: 20, color: Colors.black54),
                   ),
                 ],
               ),

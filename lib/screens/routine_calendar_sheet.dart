@@ -137,7 +137,7 @@ class _RoutineCalendarSheetState extends State<RoutineCalendarSheet> {
                 ),
                 ValueListenableBuilder<int>(
                   valueListenable: StreakService.currentStreak,
-                  builder: (_, streak, __) => Container(
+                  builder: (_, streak, _) => Container(
                     padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(

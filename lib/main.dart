@@ -15,7 +15,7 @@ Future<void> main() async {
   // NEW: initialize Supabase before the app starts
   await Supabase.initialize(
     url: 'https://wqoyhooqjvqjcxbyayyd.supabase.co',
-    anonKey: 'sb_publishable_EI1rtiTy5uMwOtheuhEs1w_NJrGQSK0',
+    publishableKey: 'sb_publishable_EI1rtiTy5uMwOtheuhEs1w_NJrGQSK0',
   );
 
   runApp(const MyApp());

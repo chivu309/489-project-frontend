@@ -30,7 +30,7 @@ class MainNavigationState extends State<MainNavigation> {
       // Rebuilds RoutinePage (and reloads its data) whenever a new routine is saved
       ValueListenableBuilder<int>(
         valueListenable: SavedRoutineStorage.routineVersion,
-        builder: (_, version, __) => RoutinePage(key: ValueKey(version)),
+        builder: (_, version, _) => RoutinePage(key: ValueKey(version)),
       ),
       ProfilePage(onGoToRoutine: _goToRoutineTab),
     ];
@@ -150,7 +150,7 @@ class MainNavigationState extends State<MainNavigation> {
   Widget _streakBadge(int streak) {
     return ValueListenableBuilder<bool>(
       valueListenable: StreakService.loggedToday,
-      builder: (_, loggedToday, __) => Container(
+      builder: (_, loggedToday, _) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
         decoration: BoxDecoration(
           // Dark green when today is logged, orange to nudge when not yet

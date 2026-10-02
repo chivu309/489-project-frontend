@@ -298,14 +298,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Column(
       children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: IconButton(
-            tooltip: 'Change username',
-            onPressed: _editUsername,
-            icon: const Icon(Icons.edit_outlined),
-          ),
-        ),
+        const SizedBox(height: 12),
         Center(
           child: Stack(
             children: [

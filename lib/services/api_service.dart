@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -18,6 +19,19 @@ class ApiService {
     }
   }
 
+  /// Pings the backend so Render starts waking up from sleep.
+  /// Fire-and-forget: never throws, never blocks the UI.
+  static Future<void> wakeUp() async {
+    try {
+      await http
+          .get(Uri.parse('$baseUrl/'))
+          .timeout(const Duration(seconds: 60));
+      debugPrint('Backend is awake');
+    } catch (e) {
+      debugPrint('Backend wake-up ping failed (will retry on next request): $e');
+    }
+  }
+
   static Future<Map<String, dynamic>> sendChatMessage({
     required List<Map<String, String>> conversationHistory,
     required String latestMessage,
@@ -28,7 +42,8 @@ class ApiService {
     final url = Uri.parse('$baseUrl/chat');
 
     try {
-      final response = await http.post(
+      final response = await http
+          .post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -38,7 +53,8 @@ class ApiService {
           'skin_type': skinType,
           'allergies': allergies,
         }),
-      );
+      )
+          .timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -49,6 +65,7 @@ class ApiService {
       throw Exception('Failed to send chat message: $e');
     }
   }
+
   static Future<Map<String, dynamic>> assessScan({
     required String imagePath,
     required bool isPregnant,
@@ -70,7 +87,8 @@ class ApiService {
         ..fields['redness_history'] = rednessHistory
         ..files.add(await http.MultipartFile.fromPath('image', imagePath));
 
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 60));
+      final streamedResponse =
+      await request.send().timeout(const Duration(seconds: 60));
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
